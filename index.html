@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>GyroLatte — Motion-Controlled Latte Art</title>
+  <title>GyroLatte CFD — Physics &amp; Quaternion Calibration</title>
   <style>
     :root {
-      --bg: #181310;
-      --panel: #241c18;
+      --bg: #15100d;
+      --panel: #231b17;
+      --panel-2: #2e241e;
       --accent: #e09f5a;
       --cream: #f6efe6;
-      --muted: #a69586;
+      --muted: #a89788;
       --good: #6ec47e;
       --warn: #e5b85c;
       --bad: #df6b57;
@@ -30,14 +31,14 @@
       margin: 0;
       min-height: 100dvh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: radial-gradient(circle at 50% 25%, #2b211b 0%, var(--bg) 75%);
+      background: radial-gradient(circle at 50% 22%, #2c211b 0%, var(--bg) 78%);
       color: var(--cream);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 14px 18px;
-      overflow: hidden;
+      padding: 10px 12px 16px;
+      overflow-x: hidden;
       touch-action: none;
     }
 
@@ -50,21 +51,16 @@
       gap: 8px;
     }
 
-    .brand {
-      display: flex;
-      flex-direction: column;
-    }
-
     .brand h1 {
       margin: 0;
-      font-size: 1.15rem;
-      letter-spacing: 0.4px;
-      color: var(--cream);
+      font-size: 1.1rem;
+      letter-spacing: 0.3px;
     }
 
     .brand span {
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       color: var(--muted);
+      display: block;
     }
 
     .pill-row {
@@ -75,16 +71,15 @@
     }
 
     button {
-      border: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
-      padding: 8px 13px;
-      font-size: 0.8rem;
+      padding: 7px 12px;
+      font-size: 0.78rem;
       font-weight: 600;
       cursor: pointer;
       background: var(--panel);
       color: var(--cream);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: transform 0.1s ease, background 0.15s ease;
+      transition: transform 0.08s ease, background 0.15s ease;
     }
 
     button:active {
@@ -115,30 +110,52 @@
     .patterns button {
       border-radius: 12px;
       padding: 7px 4px;
-      font-size: 0.76rem;
+      font-size: 0.75rem;
     }
 
     .stage {
       position: relative;
-      width: min(88vw, 390px);
-      height: min(88vw, 390px);
+      width: min(86vw, 375px);
+      height: min(86vw, 375px);
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 4px 0;
     }
 
-    canvas {
+    canvas#latteCanvas {
       width: 100%;
       height: 100%;
       border-radius: 24px;
       touch-action: none;
     }
 
+    /* Mini Quaternion Horizon Overlay */
+    .horizon-wrap {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 64px;
+      height: 64px;
+      background: rgba(20, 15, 12, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 50%;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas#horizonCanvas {
+      width: 64px;
+      height: 64px;
+    }
+
     .hud {
       width: 100%;
       max-width: 460px;
-      background: rgba(36, 28, 24, 0.9);
+      background: rgba(35, 27, 23, 0.92);
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 16px;
       padding: 10px 12px;
@@ -155,7 +172,7 @@
     }
 
     .meter-box {
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(0, 0, 0, 0.28);
       border-radius: 10px;
       padding: 6px 8px;
     }
@@ -178,32 +195,108 @@
       height: 100%;
       width: 0%;
       background: var(--accent);
-      transition: width 0.06s linear;
+      transition: width 0.05s linear;
+    }
+
+    .pro-drop {
+      display: none;
+      width: 100%;
+      padding: 11px;
+      border-radius: 12px;
+      background: #352922;
+      border: 1px dashed var(--accent);
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .pro-drop.visible {
+      display: block;
+    }
+
+    .pro-drop.held {
+      background: var(--accent);
+      color: #1c130d;
+      border-style: solid;
     }
 
     .actions {
       display: flex;
       gap: 8px;
-      align-items: center;
-      justify-content: space-between;
     }
 
     .actions button {
       flex: 1;
-      padding: 10px;
+      padding: 10px 6px;
       border-radius: 12px;
+    }
+
+    /* Calibration Drawer */
+    .tune-drawer {
+      width: 100%;
+      max-width: 460px;
+      background: var(--panel-2);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 12px;
+      margin-top: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 0.78rem;
+    }
+
+    .tune-drawer.open {
+      display: flex;
+    }
+
+    .tune-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .tune-row label {
+      color: var(--muted);
+      min-width: 118px;
+    }
+
+    .tune-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+
+    .tune-row select {
+      background: var(--panel);
+      color: var(--cream);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.76rem;
+    }
+
+    .telemetry {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      background: rgba(0, 0, 0, 0.25);
+      padding: 6px 8px;
+      border-radius: 8px;
+      text-align: center;
     }
 
     .modal {
       position: fixed;
       inset: 0;
-      background: rgba(15, 11, 9, 0.86);
+      background: rgba(14, 10, 8, 0.88);
       backdrop-filter: blur(6px);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
-      z-index: 20;
+      padding: 18px;
+      z-index: 30;
     }
 
     .modal.hidden {
@@ -223,29 +316,28 @@
 
     .card h2 {
       margin: 0 0 8px;
-      font-size: 1.3rem;
+      font-size: 1.25rem;
     }
 
     .card p {
       margin: 0 0 14px;
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       line-height: 1.45;
       color: var(--muted);
     }
 
     .tips {
       text-align: left;
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(0, 0, 0, 0.26);
       border-radius: 14px;
       padding: 12px;
-      margin-bottom: 16px;
-      font-size: 0.8rem;
+      margin-bottom: 15px;
+      font-size: 0.79rem;
       line-height: 1.5;
-      color: var(--cream);
     }
 
     .score-big {
-      font-size: 2.6rem;
+      font-size: 2.5rem;
       font-weight: 800;
       color: var(--accent);
       margin: 6px 0;
@@ -256,12 +348,12 @@
 
   <header>
     <div class="brand">
-      <h1>☕ GyroLatte</h1>
-      <span id="modeBadge">Initializing sensors...</span>
+      <h1>☕ GyroLatte CFD</h1>
+      <span id="modeBadge">Waiting for sensors...</span>
     </div>
     <div class="pill-row">
       <button id="guideBtn" class="active">Guide</button>
-      <button id="axisBtn">3-Axis</button>
+      <button id="tuneBtn">⚙ Tune</button>
       <button id="soundBtn">Sound Off</button>
     </div>
   </header>
@@ -275,6 +367,43 @@
 
   <div class="stage">
     <canvas id="latteCanvas" width="520" height="520"></canvas>
+    <div class="horizon-wrap" title="Calibrated Pitcher Attitude">
+      <canvas id="horizonCanvas" width="128" height="128"></canvas>
+    </div>
+  </div>
+
+  <!-- Collapsible Calibration & Control Settings -->
+  <div class="tune-drawer" id="tuneDrawer">
+    <div class="tune-row">
+      <label>Y-Axis Control</label>
+      <select id="yAxisMode">
+        <option value="twist">3-Axis Wrist Twist</option>
+        <option value="thumb">2-Axis + Thumb Slide Y</option>
+        <option value="autocut">Auto-Sweep + Cut</option>
+      </select>
+    </div>
+    <div class="tune-row">
+      <label>Spout Height</label>
+      <select id="heightMode">
+        <option value="coupled">Tilt-Coupled (Auto Drop)</option>
+        <option value="prohold">Pro Hold Button to Drop</option>
+      </select>
+    </div>
+    <div class="tune-row">
+      <label>Deadzone: <span id="deadzoneVal">4°</span></label>
+      <input id="deadzoneSlider" type="range" min="1" max="12" step="1" value="4" />
+    </div>
+    <div class="tune-row">
+      <label>Pour Range: <span id="pitchMaxVal">30°</span></label>
+      <input id="pitchMaxSlider" type="range" min="15" max="50" step="1" value="30" />
+    </div>
+    <div class="tune-row">
+      <label>Wiggle Range: <span id="rollMaxVal">24°</span></label>
+      <input id="rollMaxSlider" type="range" min="12" max="45" step="1" value="24" />
+    </div>
+    <div class="telemetry" id="telemetryText">
+      Pitch: 0.0° | Roll: 0.0° | Twist: 0.0°
+    </div>
   </div>
 
   <div class="hud">
@@ -288,10 +417,12 @@
         <div class="bar"><div id="flowBar"></div></div>
       </div>
       <div class="meter-box">
-        <div class="meter-label"><span>Height</span><span id="heightText">High</span></div>
+        <div class="meter-label"><span>Jet Mode</span><span id="heightText">High</span></div>
         <div class="bar"><div id="heightBar"></div></div>
       </div>
     </div>
+
+    <div class="pro-drop" id="proDropPad">HOLD TO DROP SPOUT LOW (FLOAT FOAM)</div>
 
     <div class="actions">
       <button id="calibrateBtn">🎯 Zero Tilt</button>
@@ -300,19 +431,19 @@
     </div>
   </div>
 
-  <!-- Start / Permission Modal -->
+  <!-- Start Modal -->
   <div class="modal" id="startModal">
     <div class="card">
-      <h2>Hold Phone Like a Pitcher</h2>
-      <p>Pour real-time microfoam using your phone’s gyroscope instead of buttons.</p>
+      <h2>Hold Phone Like a Milk Pitcher</h2>
+      <p>Real-time Navier–Stokes microfoam fluid physics driven by quaternion gyroscope tracking.</p>
       <div class="tips">
-        <strong>• Tilt Forward:</strong> Start pouring (tilt deeper for lower spout &amp; whiter foam)<br />
-        <strong>• Tilt Left / Right:</strong> Wiggle &amp; sweep across the cup<br />
-        <strong>• Twist Wrist (3-Axis) / Drag Y (2-Axis):</strong> Move front-to-back to stack &amp; cut through<br />
-        <strong>• Desktop fallback:</strong> Click &amp; drag on the cup to simulate tilting
+        <strong>1. Zero Anywhere:</strong> Hold your phone at any natural grip angle and tap Enable—quaternion math prevents gimbal lock.<br />
+        <strong>2. High vs. Low Jet:</strong> Slight forward tilt pours high (penetrates under crema to set the base). Deeper tilt drops the spout low to float crisp white foam.<br />
+        <strong>3. Cut Cleanly:</strong> Lift slightly back while pulling forward to thin the jet and slice through Hearts or Tulips.<br />
+        <strong>• Desktop:</strong> Drag on the cup (hold Shift for high/submerge pour).
       </div>
       <button id="enableGyroBtn" class="primary" style="width:100%; padding:13px; font-size:0.95rem;">
-        Enable Gyroscope &amp; Calibrate
+        Enable Gyroscope &amp; Zero Tilt
       </button>
       <button id="desktopModeBtn" style="width:100%; margin-top:8px;">
         Use Mouse / Touch Fallback
@@ -324,7 +455,7 @@
   <div class="modal hidden" id="scoreModal">
     <div class="card">
       <h2 id="scoreTitle">Cup Served!</h2>
-      <div class="score-big" id="scoreValue">88/100</div>
+      <div class="score-big" id="scoreValue">90/100</div>
       <p id="scoreFeedback"></p>
       <button id="nextCupBtn" class="primary" style="width:100%; padding:12px;">Pour Another Cup</button>
     </div>
@@ -332,22 +463,45 @@
 
 <script>
 (() => {
+  // ---------- Constants & Canvas ----------
   const canvas = document.getElementById('latteCanvas');
   const ctx = canvas.getContext('2d');
   const W = canvas.width;
   const H = canvas.height;
 
-  const N = 144;
-  const R = 65;
+  const hCanvas = document.getElementById('horizonCanvas');
+  const hCtx = hCanvas.getContext('2d');
+
+  // Eulerian Fluid Grid (128x128 runs smoothly at 60fps on mobile)
+  const N = 128;
+  const SIZE = N * N;
   const CX = N / 2;
   const CY = N / 2;
+  const R = 57; // Cup radius in grid cells
 
-  let foam = new Float32Array(N * N);
-  let foamNext = new Float32Array(N * N);
-  let velX = new Float32Array(N * N);
-  let velY = new Float32Array(N * N);
-  let cremaNoise = new Float32Array(N * N);
-  let targetMask = new Float32Array(N * N);
+  const insideMask = new Uint8Array(SIZE);
+  const cremaNoise = new Float32Array(SIZE);
+  const targetMask = new Float32Array(SIZE);
+
+  // Fluid velocity, pressure, vorticity
+  let u = new Float32Array(SIZE);
+  let v = new Float32Array(SIZE);
+  let uNext = new Float32Array(SIZE);
+  let vNext = new Float32Array(SIZE);
+  const p = new Float32Array(SIZE);
+  const div = new Float32Array(SIZE);
+  const sourceField = new Float32Array(SIZE);
+  const curlField = new Float32Array(SIZE);
+
+  // Two-layer stratification fields:
+  // foam = buoyant surface microfoam (white wet-paint layer)
+  // baseMix = subsurface milk-espresso blend (dark espresso -> golden crema)
+  let foam = new Float32Array(SIZE);
+  let foamHat = new Float32Array(SIZE);
+  let foamBack = new Float32Array(SIZE);
+  let foamNext = new Float32Array(SIZE);
+  let baseMix = new Float32Array(SIZE);
+  let baseMixNext = new Float32Array(SIZE);
 
   const simCanvas = document.createElement('canvas');
   simCanvas.width = N;
@@ -355,44 +509,62 @@
   const simCtx = simCanvas.getContext('2d');
   const simImg = simCtx.createImageData(N, N);
 
+  // ---------- App & Calibration Settings ----------
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+
   let currentPattern = 'heart';
   let showGuide = true;
-  let threeAxisMode = true;
   let useGyro = false;
+  let hasGyroEvent = false;
+
+  // Calibration config
+  let yAxisMode = 'twist';      // 'twist' | 'thumb' | 'autocut'
+  let heightMode = 'coupled';   // 'coupled' | 'prohold'
+  let deadzoneDeg = 4;
+  let pitchMaxDeg = 30;
+  let rollMaxDeg = 24;
+  let proDropHeld = false;
+
+  // Quaternion calibration state
+  let qDev = { w: 1, x: 0, y: 0, z: 0 };
+  let qZero = { w: 1, x: 0, y: 0, z: 0 };
+  let calibrated = false;
+
+  // Smoothed normalized controls
+  let smoothPitch = 0; // 0..1
+  let smoothRoll = 0;  // -1..1
+  let smoothYaw = 0;   // -1..1
+  let thumbSlideY = 0; // -1..1 for 2-axis mode
+
+  // Pour coordinates (-1..1)
+  let pourX = 0;
+  let pourY = 0;
+  let prevPourX = 0;
+  let prevPourY = 0;
+  let cupFill = 0;
+  let spilled = false;
+
+  // Desktop / Touch fallback
+  let pointerDown = false;
+  let pointerNX = 0;
+  let pointerNY = 0;
+  let shiftHeld = false;
+
+  // Audio
   let soundEnabled = false;
   let audioCtx = null;
   let pourGain = null;
   let pourFilter = null;
 
-  let cupFill = 0;
-  let spilled = false;
-
-  let baseBeta = 42;
-  let baseGamma = 0;
-  let baseAlpha = 0;
-  let rawBeta = 42;
-  let rawGamma = 0;
-  let rawAlpha = 0;
-  let hasGyroEvent = false;
-
-  let tiltPitch = 0;
-  let tiltRoll = 0;
-  let tiltYaw = 0;
-  let touchDragY = 0;
-
-  let pourX = 0;
-  let pourY = 0;
-  let prevPourX = 0;
-  let prevPourY = 0;
-
-  let pointerDown = false;
-  let pointerNX = 0;
-  let pointerNY = 0;
-
+  // ---------- UI Refs ----------
   const modeBadge = document.getElementById('modeBadge');
   const guideBtn = document.getElementById('guideBtn');
-  const axisBtn = document.getElementById('axisBtn');
+  const tuneBtn = document.getElementById('tuneBtn');
+  const tuneDrawer = document.getElementById('tuneDrawer');
   const soundBtn = document.getElementById('soundBtn');
+  const proDropPad = document.getElementById('proDropPad');
+  const telemetryText = document.getElementById('telemetryText');
   const fillText = document.getElementById('fillText');
   const fillBar = document.getElementById('fillBar');
   const flowText = document.getElementById('flowText');
@@ -402,21 +574,93 @@
   const startModal = document.getElementById('startModal');
   const scoreModal = document.getElementById('scoreModal');
 
-  function clamp(v, min, max) {
-    return v < min ? min : v > max ? max : v;
+  function clamp(val, min, max) {
+    return val < min ? min : val > max ? max : val;
   }
 
-  function wrapAngleDelta(a, b) {
-    return ((a - b + 540) % 360) - 180;
+  // ---------- Quaternion Math (W3C Z-X'-Y'' Convention) ----------
+  function eulerToQuat(alpha, beta, gamma) {
+    const x = (beta || 0) * DEG2RAD;
+    const y = (gamma || 0) * DEG2RAD;
+    const z = (alpha || 0) * DEG2RAD;
+
+    const cX = Math.cos(x * 0.5), sX = Math.sin(x * 0.5);
+    const cY = Math.cos(y * 0.5), sY = Math.sin(y * 0.5);
+    const cZ = Math.cos(z * 0.5), sZ = Math.sin(z * 0.5);
+
+    return {
+      w: cX * cY * cZ - sX * sY * sZ,
+      x: sX * cY * cZ - cX * sY * sZ,
+      y: cX * sY * cZ + sX * cY * sZ,
+      z: cX * cY * sZ + sX * sY * cZ
+    };
   }
 
-  function initCrema() {
+  function quatConjugate(q) {
+    return { w: q.w, x: -q.x, y: -q.y, z: -q.z };
+  }
+
+  function quatMultiply(a, b) {
+    return {
+      w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+      x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+      y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+      z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w
+    };
+  }
+
+  function rotateVec(q, vx, vy, vz) {
+    const ix =  q.w * vx + q.y * vz - q.z * vy;
+    const iy =  q.w * vy + q.z * vx - q.x * vz;
+    const iz =  q.w * vz + q.x * vy - q.y * vx;
+    const iw = -q.x * vx - q.y * vy - q.z * vz;
+
+    return {
+      x: ix * q.w + iw * -q.x + iy * -q.z - iz * -q.y,
+      y: iy * q.w + iw * -q.y + iz * -q.x - ix * -q.z,
+      z: iz * q.w + iw * -q.z + ix * -q.y - iy * -q.x
+    };
+  }
+
+  // Extract gimbal-lock-free Pitch, Roll (device local frame) & Twist (world vertical frame)
+  function getCalibratedAngles() {
+    const qZeroInv = quatConjugate(qZero);
+    // Relative rotation in the calibrated phone's own local axes
+    const qLocal = quatMultiply(qZeroInv, qDev);
+    const vZ = rotateVec(qLocal, 0, 0, 1);
+
+    // Pitch forward (top edge down toward cup) -> positive degrees
+    const pitchDeg = Math.atan2(vZ.y, vZ.z) * RAD2DEG;
+    // Roll left/right around phone spine -> positive = right
+    const rollDeg = Math.atan2(vZ.x, vZ.z) * RAD2DEG;
+
+    // World-vertical twist from calibrated facing direction
+    const qWorld = quatMultiply(qDev, qZeroInv);
+    const vXWorld = rotateVec(qWorld, 1, 0, 0);
+    const twistDeg = Math.atan2(vXWorld.y, vXWorld.x) * RAD2DEG;
+
+    return { pitchDeg, rollDeg, twistDeg };
+  }
+
+  // Soft deadzone with smooth ramp so milk doesn't jerk at threshold
+  function applyDeadzone(deg, dz, maxDeg) {
+    const abs = Math.abs(deg);
+    if (abs <= dz) return 0;
+    const sign = deg < 0 ? -1 : 1;
+    return sign * clamp((abs - dz) / Math.max(1, maxDeg - dz), 0, 1);
+  }
+
+  // ---------- Domain & Target Initialization ----------
+  function initGrid() {
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         const idx = y * N + x;
-        const n = Math.sin(x * 0.23 + y * 0.17) * 0.5 +
-                  Math.cos(x * 0.11 - y * 0.29) * 0.5;
-        cremaNoise[idx] = n * 0.06;
+        const dx = x - CX;
+        const dy = y - CY;
+        insideMask[idx] = (dx * dx + dy * dy <= R * R) ? 1 : 0;
+        const n = Math.sin(x * 0.24 + y * 0.19) * 0.5 +
+                  Math.cos(x * 0.13 - y * 0.31) * 0.5;
+        cremaNoise[idx] = n * 0.055;
       }
     }
   }
@@ -455,18 +699,22 @@
   }
 
   function resetCup() {
-    foam.fill(0);
-    foamNext.fill(0);
-    velX.fill(0);
-    velY.fill(0);
+    u.fill(0); v.fill(0);
+    uNext.fill(0); vNext.fill(0);
+    p.fill(0); div.fill(0);
+    sourceField.fill(0); curlField.fill(0);
+    foam.fill(0); foamNext.fill(0);
+    baseMix.fill(0); baseMixNext.fill(0);
     cupFill = 0;
     spilled = false;
     pourX = 0;
     pourY = 0;
     prevPourX = 0;
     prevPourY = 0;
+    thumbSlideY = 0;
   }
 
+  // ---------- Sound Engine ----------
   function initSound() {
     if (audioCtx) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -476,9 +724,7 @@
     const bufferSize = audioCtx.sampleRate * 2;
     const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
 
     const whiteNoise = audioCtx.createBufferSource();
     whiteNoise.buffer = noiseBuffer;
@@ -486,8 +732,8 @@
 
     pourFilter = audioCtx.createBiquadFilter();
     pourFilter.type = 'bandpass';
-    pourFilter.frequency.value = 550;
-    pourFilter.Q.value = 1.4;
+    pourFilter.frequency.value = 500;
+    pourFilter.Q.value = 1.5;
 
     pourGain = audioCtx.createGain();
     pourGain.gain.value = 0;
@@ -498,112 +744,268 @@
     whiteNoise.start();
   }
 
-  function updateSound(flow) {
+  function updateSound(flow, height) {
     if (!audioCtx || !pourGain) return;
     if (!soundEnabled || flow <= 0.02 || spilled) {
       pourGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
       return;
     }
-    const freq = 400 + cupFill * 480 + flow * 180;
+    // High pour sounds brighter & splashier; low pour sounds deeper & creamier
+    const freq = 340 + cupFill * 420 + height * 280 + flow * 140;
     pourFilter.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.05);
-    pourGain.gain.setTargetAtTime(flow * 0.12, audioCtx.currentTime, 0.04);
+    pourGain.gain.setTargetAtTime(flow * 0.11, audioCtx.currentTime, 0.04);
   }
 
-  function stepFluid(flowRate, pitcherHeight) {
+  // ---------- 2D Incompressible Navier-Stokes + Stratified Foam Solver ----------
+  function sampleBilinear(field, x, y) {
+    const cx = clamp(x, 1, N - 2.001);
+    const cy = clamp(y, 1, N - 2.001);
+    const x0 = Math.floor(cx);
+    const y0 = Math.floor(cy);
+    const fx = cx - x0;
+    const fy = cy - y0;
+    const i00 = y0 * N + x0;
+    const i10 = i00 + 1;
+    const i01 = i00 + N;
+    const i11 = i01 + 1;
+    return (
+      (field[i00] * (1 - fx) + field[i10] * fx) * (1 - fy) +
+      (field[i01] * (1 - fx) + field[i11] * fx) * fy
+    );
+  }
+
+  function stepPhysics(flowRate, spoutHeight) {
+    sourceField.fill(0);
+
+    // 1. Apply Pour Jet Momentum, Penetration & Surface-Tension Stratification
     if (flowRate > 0.02 && !spilled) {
       const gx = CX + pourX * (R * 0.72);
       const gy = CY + pourY * (R * 0.72);
-      const moveVX = (pourX - prevPourX) * 55;
-      const moveVY = (pourY - prevPourY) * 55;
+      const moveVX = (pourX - prevPourX) * 42;
+      const moveVY = (pourY - prevPourY) * 42;
 
-      const foamStrength = pitcherHeight < 0.58
-        ? (0.58 - pitcherHeight) * 1.45 * flowRate
-        : 0.035 * flowRate;
+      // Height physics:
+      // High spout (spoutHeight > 0.5) -> high vertical momentum, plunges under crema -> mixes baseMix
+      // Low spout (spoutHeight <= 0.5) -> stagnation-point radial wall jet -> deposits floating foam
+      const isFloating = spoutHeight < 0.55;
+      const floatRatio = clamp((0.55 - spoutHeight) / 0.55, 0, 1);
+      const submergeRatio = 1 - floatRatio;
 
-      const impactRadius = 5.5 + flowRate * 6.5;
-      const rSq = impactRadius * impactRadius;
+      const jetRadius = 3.2 + flowRate * 4.4 + floatRatio * 1.4;
+      const rSq = jetRadius * jetRadius;
 
-      const minX = Math.max(1, Math.floor(gx - impactRadius - 2));
-      const maxX = Math.min(N - 2, Math.ceil(gx + impactRadius + 2));
-      const minY = Math.max(1, Math.floor(gy - impactRadius - 2));
-      const maxY = Math.min(N - 2, Math.ceil(gy + impactRadius + 2));
+      // Lateral surface spreading force vs vertical plunge
+      const radialStrength = flowRate * (0.35 + floatRatio * 1.35);
+      const sourceStrength = flowRate * (0.14 + floatRatio * 0.48);
+
+      const minX = Math.max(2, Math.floor(gx - jetRadius - 2));
+      const maxX = Math.min(N - 3, Math.ceil(gx + jetRadius + 2));
+      const minY = Math.max(2, Math.floor(gy - jetRadius - 2));
+      const maxY = Math.min(N - 3, Math.ceil(gy + jetRadius + 2));
 
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
+          const idx = y * N + x;
+          if (!insideMask[idx]) continue;
           const dx = x - gx;
           const dy = y - gy;
-          const distSq = dx * dx + dy * dy;
-          if (distSq > rSq) continue;
+          const dSq = dx * dx + dy * dy;
+          if (dSq > rSq) continue;
 
-          const dist = Math.sqrt(distSq) + 0.001;
-          const falloff = 1 - dist / impactRadius;
-          const idx = y * N + x;
+          const dist = Math.sqrt(dSq) + 0.001;
+          const falloff = Math.pow(1 - dist / jetRadius, 1.4);
 
-          foam[idx] = clamp(foam[idx] + foamStrength * falloff * 0.38, 0, 1);
+          // Subsurface espresso-milk mixing (sets golden canvas)
+          baseMix[idx] = clamp(baseMix[idx] + submergeRatio * flowRate * falloff * 0.16, 0, 1);
 
-          const push = flowRate * falloff * 1.65;
-          velX[idx] += (dx / dist) * push + moveVX * falloff * 0.25;
-          velY[idx] += (dy / dist) * push + moveVY * falloff * 0.25;
+          // Buoyant surface microfoam deposit when spout is low
+          if (isFloating) {
+            foam[idx] = clamp(foam[idx] + floatRatio * flowRate * falloff * 0.42, 0, 1);
+          } else {
+            // High thin jet gently parts thin foam along its cut line
+            foam[idx] = clamp(foam[idx] - submergeRatio * flowRate * falloff * 0.04, 0, 1);
+          }
+
+          // Inject radial wall-jet velocity + pitcher sweep drag + incompressible source
+          u[idx] += (dx / dist) * radialStrength * falloff + moveVX * falloff * 0.32;
+          v[idx] += (dy / dist) * radialStrength * falloff + moveVY * falloff * 0.32;
+          sourceField[idx] += sourceStrength * falloff;
         }
       }
 
-      cupFill += flowRate * 0.0036;
+      cupFill += flowRate * 0.0033;
       if (cupFill >= 1) {
         cupFill = 1;
         spilled = true;
       }
     }
 
-    const dt = 0.85;
+    // 2. Vorticity Confinement (curls rosetta petals & heart lobes organically)
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
-        const dx = x - CX;
-        const dy = y - CY;
-        if (dx * dx + dy * dy > R * R) {
-          foamNext[idx] = 0;
-          velX[idx] = 0;
-          velY[idx] = 0;
+        if (!insideMask[idx]) {
+          curlField[idx] = 0;
           continue;
         }
-
-        let sx = x - velX[idx] * dt;
-        let sy = y - velY[idx] * dt;
-
-        const sdx = sx - CX;
-        const sdy = sy - CY;
-        const sDist = Math.hypot(sdx, sdy);
-        if (sDist > R - 1) {
-          const scale = (R - 1) / sDist;
-          sx = CX + sdx * scale;
-          sy = CY + sdy * scale;
-        }
-
-        const x0 = Math.floor(sx);
-        const y0 = Math.floor(sy);
-        const fx = sx - x0;
-        const fy = sy - y0;
-
-        const i00 = y0 * N + x0;
-        const i10 = i00 + 1;
-        const i01 = i00 + N;
-        const i11 = i01 + 1;
-
-        const top = foam[i00] * (1 - fx) + foam[i10] * fx;
-        const bot = foam[i01] * (1 - fx) + foam[i11] * fx;
-        foamNext[idx] = top * (1 - fy) + bot * fy;
-
-        velX[idx] *= 0.88;
-        velY[idx] *= 0.88;
+        curlField[idx] = 0.5 * ((v[idx + 1] - v[idx - 1]) - (u[idx + N] - u[idx - N]));
       }
     }
 
-    const temp = foam;
-    foam = foamNext;
-    foamNext = temp;
+    const vortEps = 0.16;
+    for (let y = 2; y < N - 2; y++) {
+      for (let x = 2; x < N - 2; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) continue;
+        const dwDx = 0.5 * (Math.abs(curlField[idx + 1]) - Math.abs(curlField[idx - 1]));
+        const dwDy = 0.5 * (Math.abs(curlField[idx + N]) - Math.abs(curlField[idx - N]));
+        const len = Math.hypot(dwDx, dwDy) + 1e-5;
+        const nx = dwDx / len;
+        const ny = dwDy / len;
+        const w = curlField[idx];
+        u[idx] += vortEps * (ny * w);
+        v[idx] += vortEps * (-nx * w);
+      }
+    }
+
+    // 3. Velocity Self-Advection + Bingham Shear-Thinning Microfoam Drag
+    const dt = 0.72;
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) {
+          uNext[idx] = 0;
+          vNext[idx] = 0;
+          continue;
+        }
+        const sx = x - u[idx] * dt;
+        const sy = y - v[idx] * dt;
+        const au = sampleBilinear(u, sx, sy);
+        const av = sampleBilinear(v, sx, sy);
+
+        // Non-Newtonian drag: fast fluid glides; slow foam locks its pattern cleanly
+        const speed = Math.hypot(au, av);
+        const drag = speed > 0.18 ? 0.935 : 0.84;
+        uNext[idx] = au * drag;
+        vNext[idx] = av * drag;
+      }
+    }
+    let tmp = u; u = uNext; uNext = tmp;
+    tmp = v; v = vNext; vNext = tmp;
+
+    // 4. Incompressible Pressure Projection (with cup wall boundary + jet source)
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) {
+          div[idx] = 0;
+          p[idx] = 0;
+          continue;
+        }
+        div[idx] = -0.5 * ((u[idx + 1] - u[idx - 1]) + (v[idx + N] - v[idx - N])) + sourceField[idx];
+        p[idx] = 0;
+      }
+    }
+
+    // 14 Jacobi iterations for smooth global displacement across the cup
+    for (let iter = 0; iter < 14; iter++) {
+      for (let y = 1; y < N - 1; y++) {
+        for (let x = 1; x < N - 1; x++) {
+          const idx = y * N + x;
+          if (!insideMask[idx]) continue;
+          const pC = p[idx];
+          const pL = insideMask[idx - 1] ? p[idx - 1] : pC;
+          const pR = insideMask[idx + 1] ? p[idx + 1] : pC;
+          const pU = insideMask[idx - N] ? p[idx - N] : pC;
+          const pD = insideMask[idx + N] ? p[idx + N] : pC;
+          p[idx] = (div[idx] + pL + pR + pU + pD) * 0.25;
+        }
+      }
+    }
+
+    // Subtract pressure gradient & enforce circular cup wall slip
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) {
+          u[idx] = 0;
+          v[idx] = 0;
+          continue;
+        }
+        const pC = p[idx];
+        const pL = insideMask[idx - 1] ? p[idx - 1] : pC;
+        const pR = insideMask[idx + 1] ? p[idx + 1] : pC;
+        const pU = insideMask[idx - N] ? p[idx - N] : pC;
+        const pD = insideMask[idx + N] ? p[idx + N] : pC;
+
+        u[idx] -= 0.5 * (pR - pL);
+        v[idx] -= 0.5 * (pD - pU);
+
+        // Near cup rim, deflect outward velocity along the rim curve
+        const dx = x - CX;
+        const dy = y - CY;
+        const dist = Math.hypot(dx, dy);
+        if (dist > R - 2.2) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const outward = u[idx] * nx + v[idx] * ny;
+          if (outward > 0) {
+            u[idx] -= outward * nx;
+            v[idx] -= outward * ny;
+          }
+        }
+      }
+    }
+
+    // 5. Clamped MacCormack Advection for razor-sharp wet-paint microfoam
+    // Forward pass
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) {
+          foamHat[idx] = 0;
+          baseMixNext[idx] = 0;
+          continue;
+        }
+        const sx = x - u[idx] * dt;
+        const sy = y - v[idx] * dt;
+        foamHat[idx] = sampleBilinear(foam, sx, sy);
+        baseMixNext[idx] = sampleBilinear(baseMix, sx, sy);
+      }
+    }
+
+    // Backward pass + min/max limiter
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        if (!insideMask[idx]) {
+          foamNext[idx] = 0;
+          continue;
+        }
+        const sx = clamp(x - u[idx] * dt, 1, N - 2.001);
+        const sy = clamp(y - v[idx] * dt, 1, N - 2.001);
+
+        const fxBack = x + u[idx] * dt;
+        const fyBack = y + v[idx] * dt;
+        const backVal = sampleBilinear(foamHat, fxBack, fyBack);
+        let corrected = foamHat[idx] + 0.5 * (foam[idx] - backVal);
+
+        // Clamp to source neighborhood to eliminate ringing
+        const x0 = Math.floor(sx);
+        const y0 = Math.floor(sy);
+        const i00 = y0 * N + x0;
+        const minF = Math.min(foam[i00], foam[i00 + 1], foam[i00 + N], foam[i00 + N + 1]);
+        const maxF = Math.max(foam[i00], foam[i00 + 1], foam[i00 + N], foam[i00 + N + 1]);
+        foamNext[idx] = clamp(corrected, minF, maxF);
+      }
+    }
+
+    tmp = foam; foam = foamNext; foamNext = tmp;
+    tmp = baseMix; baseMix = baseMixNext; baseMixNext = tmp;
   }
 
-  function render(flowRate, pitcherHeight) {
+  // ---------- Render Cup, Stratified Glossy Foam & Pitcher ----------
+  function render(flowRate, spoutHeight) {
     ctx.clearRect(0, 0, W, H);
 
     const cupCenterX = W / 2;
@@ -611,16 +1013,17 @@
     const outerRadius = W * 0.39;
     const innerRadius = W * 0.34;
 
+    // Saucer
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY + 6, W * 0.46, 0, Math.PI * 2);
     const saucerGrad = ctx.createRadialGradient(
-      cupCenterX - 20, cupCenterY - 20, W * 0.1,
+      cupCenterX - 24, cupCenterY - 24, W * 0.1,
       cupCenterX, cupCenterY + 6, W * 0.46
     );
-    saucerGrad.addColorStop(0, '#3e342f');
+    saucerGrad.addColorStop(0, '#40352f');
     saucerGrad.addColorStop(0.85, '#29211d');
-    saucerGrad.addColorStop(1, '#1a1411');
+    saucerGrad.addColorStop(1, '#18120f');
     ctx.fillStyle = saucerGrad;
     ctx.fill();
     ctx.restore();
@@ -628,12 +1031,13 @@
     if (spilled) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cupCenterX + 40, cupCenterY + outerRadius + 12, 34, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(246, 239, 230, 0.82)';
+      ctx.arc(cupCenterX + 42, cupCenterY + outerRadius + 12, 34, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(246, 239, 230, 0.85)';
       ctx.fill();
       ctx.restore();
     }
 
+    // Cup Handle
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(cupCenterX + outerRadius + 16, cupCenterY, 26, 15, 0, 0, Math.PI * 2);
@@ -642,48 +1046,60 @@
     ctx.stroke();
     ctx.restore();
 
+    // Ceramic Rim
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY, outerRadius, 0, Math.PI * 2);
     const rimGrad = ctx.createLinearGradient(0, cupCenterY - outerRadius, 0, cupCenterY + outerRadius);
     rimGrad.addColorStop(0, '#ffffff');
-    rimGrad.addColorStop(1, '#cfc2b6');
+    rimGrad.addColorStop(1, '#ccc0b4');
     ctx.fillStyle = rimGrad;
     ctx.fill();
     ctx.restore();
 
+    // Shade Fluid Grid with Glossy Microfoam Specular Normals
     const data = simImg.data;
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
-        const p = idx * 4;
-        const dx = x - CX;
-        const dy = y - CY;
-        if (dx * dx + dy * dy > R * R) {
-          data[p + 3] = 0;
+        const pIdx = idx * 4;
+        if (!insideMask[idx]) {
+          data[pIdx + 3] = 0;
           continue;
         }
 
+        const dx = x - CX;
+        const dy = y - CY;
+        const edgeShade = Math.max(0, 1 - (dx * dx + dy * dy) / (R * R) * 0.24);
+
+        // Subsurface espresso -> warm golden canvas color
+        const bm = clamp(baseMix[idx] * 0.75 + cupFill * 0.25, 0, 1);
+        const cR = (122 + bm * 68 + cremaNoise[idx] * 95) * edgeShade;
+        const cG = (64  + bm * 58 + cremaNoise[idx] * 60) * edgeShade;
+        const cB = (28  + bm * 38 + cremaNoise[idx] * 35) * edgeShade;
+
+        // Microfoam surface slope for subtle wet-paint gloss
+        const gx = foam[idx + 1] - foam[idx - 1];
+        const gy = foam[idx + N] - foam[idx - N];
+        const gloss = clamp((-gx - gy) * 18, -8, 12);
+
+        const mR = clamp(248 + gloss, 0, 255);
+        const mG = clamp(241 + gloss, 0, 255);
+        const mB = clamp(231 + gloss, 0, 255);
+
+        // Crisp boundary contrast curve for stratified microfoam
         const f = foam[idx];
-        const edgeShade = Math.max(0, 1 - (dx * dx + dy * dy) / (R * R) * 0.22);
-        const baseLighten = cupFill * 0.28;
-        const cremaR = (138 + baseLighten * 65 + cremaNoise[idx] * 90) * edgeShade;
-        const cremaG = (76 + baseLighten * 55 + cremaNoise[idx] * 60) * edgeShade;
-        const cremaB = (34 + baseLighten * 38 + cremaNoise[idx] * 35) * edgeShade;
+        const mix = clamp(Math.pow(f, 0.78), 0, 1);
 
-        const milkR = 250;
-        const milkG = 243;
-        const milkB = 232;
-
-        const mix = clamp(Math.pow(f, 0.85), 0, 1);
-        data[p] = cremaR * (1 - mix) + milkR * mix;
-        data[p + 1] = cremaG * (1 - mix) + milkG * mix;
-        data[p + 2] = cremaB * (1 - mix) + milkB * mix;
-        data[p + 3] = 255;
+        data[pIdx]     = cR * (1 - mix) + mR * mix;
+        data[pIdx + 1] = cG * (1 - mix) + mG * mix;
+        data[pIdx + 2] = cB * (1 - mix) + mB * mix;
+        data[pIdx + 3] = 255;
       }
     }
     simCtx.putImageData(simImg, 0, 0);
 
+    // Draw espresso surface inside cup
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY, innerRadius, 0, Math.PI * 2);
@@ -693,6 +1109,7 @@
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(simCanvas, cupCenterX - drawSize / 2, cupCenterY - drawSize / 2, drawSize, drawSize);
 
+    // Optional Ghost Pattern Guide
     if (showGuide && currentPattern !== 'free') {
       ctx.globalAlpha = 0.16;
       ctx.strokeStyle = '#ffffff';
@@ -720,35 +1137,40 @@
     }
     ctx.restore();
 
+    // Target aim reticle
     const targetX = cupCenterX + pourX * (innerRadius * 0.72);
     const targetY = cupCenterY + pourY * (innerRadius * 0.72);
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(targetX, targetY, 6 + flowRate * 5, 0, Math.PI * 2);
-    ctx.strokeStyle = flowRate > 0.02 ? 'rgba(255,255,255,0.85)' : 'rgba(224,159,90,0.6)';
+    ctx.arc(targetX, targetY, 5 + flowRate * 5, 0, Math.PI * 2);
+    ctx.strokeStyle = flowRate > 0.02
+      ? (spoutHeight < 0.55 ? 'rgba(255,255,255,0.9)' : 'rgba(229,184,92,0.85)')
+      : 'rgba(224,159,90,0.55)';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
 
-    const spoutX = targetX + 36 + tiltRoll * 14;
-    const spoutY = targetY - 68 - pitcherHeight * 42;
+    // Milk stream + Tilted Pitcher
+    const spoutX = targetX + 34 + smoothRoll * 14;
+    const spoutY = targetY - 56 - spoutHeight * 54;
 
     if (flowRate > 0.02 && !spilled) {
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(spoutX, spoutY);
-      ctx.quadraticCurveTo(spoutX - 8, (spoutY + targetY) / 2, targetX, targetY);
-      ctx.lineWidth = 2.5 + flowRate * 7;
+      ctx.quadraticCurveTo(spoutX - 7, (spoutY + targetY) / 2, targetX, targetY);
+      // High stream is thinner due to gravity stretching; low stream is thicker
+      ctx.lineWidth = (2.2 + flowRate * 6.8) * (1.15 - spoutHeight * 0.45);
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(252, 247, 240, 0.92)';
+      ctx.strokeStyle = 'rgba(252, 247, 240, 0.93)';
       ctx.stroke();
       ctx.restore();
     }
 
     ctx.save();
     ctx.translate(spoutX, spoutY);
-    ctx.rotate(-0.35 - tiltPitch * 0.55 + tiltRoll * 0.15);
+    ctx.rotate(-0.32 - smoothPitch * 0.58 + smoothRoll * 0.14);
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(44, -18);
@@ -756,9 +1178,9 @@
     ctx.lineTo(10, 32);
     ctx.closePath();
     const steelGrad = ctx.createLinearGradient(0, -18, 54, 32);
-    steelGrad.addColorStop(0, '#dcdcdc');
+    steelGrad.addColorStop(0, '#e3e3e3');
     steelGrad.addColorStop(0.5, '#9d9d9d');
-    steelGrad.addColorStop(1, '#666666');
+    steelGrad.addColorStop(1, '#636363');
     ctx.fillStyle = steelGrad;
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
@@ -767,145 +1189,197 @@
     ctx.restore();
   }
 
+  // Render mini Quaternion Calibration Horizon
+  function renderHorizon(pitchDeg, rollDeg) {
+    const hw = hCanvas.width;
+    const hh = hCanvas.height;
+    const hc = hw / 2;
+    hCtx.clearRect(0, 0, hw, hh);
+
+    // Deadzone circle
+    const dzRadius = (deadzoneDeg / pitchMaxDeg) * (hc * 0.78);
+    hCtx.beginPath();
+    hCtx.arc(hc, hc, Math.max(4, dzRadius), 0, Math.PI * 2);
+    hCtx.strokeStyle = 'rgba(224, 159, 90, 0.45)';
+    hCtx.lineWidth = 2;
+    hCtx.stroke();
+
+    // Crosshairs
+    hCtx.beginPath();
+    hCtx.moveTo(hc, 10); hCtx.lineTo(hc, hh - 10);
+    hCtx.moveTo(10, hc); hCtx.lineTo(hw - 10, hc);
+    hCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+    hCtx.lineWidth = 1.5;
+    hCtx.stroke();
+
+    // Live attitude dot
+    const dx = clamp(rollDeg / rollMaxDeg, -1, 1) * (hc * 0.72);
+    const dy = clamp(pitchDeg / pitchMaxDeg, -1, 1) * (hc * 0.72);
+    hCtx.beginPath();
+    hCtx.arc(hc + dx, hc + dy, 7, 0, Math.PI * 2);
+    hCtx.fillStyle = smoothPitch > 0.03 ? '#6ec47e' : '#e09f5a';
+    hCtx.fill();
+  }
+
+  // ---------- Main Simulation Loop ----------
   function loop() {
     prevPourX = pourX;
     prevPourY = pourY;
 
+    let dispPitchDeg = 0;
+    let dispRollDeg = 0;
+    let dispTwistDeg = 0;
+
     if (useGyro && hasGyroEvent) {
-      const dBeta = baseBeta - rawBeta;
-      const dGamma = rawGamma - baseGamma;
-      const dAlpha = wrapAngleDelta(rawAlpha, baseAlpha);
+      const { pitchDeg, rollDeg, twistDeg } = getCalibratedAngles();
+      dispPitchDeg = pitchDeg;
+      dispRollDeg = rollDeg;
+      dispTwistDeg = twistDeg;
 
-      const targetPitch = clamp((dBeta - 4) / 34, 0, 1);
-      const targetRoll = clamp(dGamma / 28, -1, 1);
-      const targetYaw = threeAxisMode ? clamp(-dAlpha / 28, -1, 1) : touchDragY;
+      const targetPitch = clamp(applyDeadzone(pitchDeg, deadzoneDeg, pitchMaxDeg), 0, 1);
+      const targetRoll = applyDeadzone(rollDeg, 1.5, rollMaxDeg);
 
-      tiltPitch += (targetPitch - tiltPitch) * 0.22;
-      tiltRoll += (targetRoll - tiltRoll) * 0.25;
-      tiltYaw += (targetYaw - tiltYaw) * 0.22;
+      let targetYaw = 0;
+      if (yAxisMode === 'twist') {
+        targetYaw = applyDeadzone(-twistDeg, 2, 26);
+      } else if (yAxisMode === 'thumb') {
+        targetYaw = thumbSlideY;
+      } else {
+        // Auto-Sweep + Cut: starts slightly back when pouring, slides forward as pitch eases back
+        targetYaw = targetPitch > 0.4 ? -0.18 : 0.42;
+      }
+
+      smoothPitch += (targetPitch - smoothPitch) * 0.24;
+      smoothRoll += (targetRoll - smoothRoll) * 0.26;
+      smoothYaw += (targetYaw - smoothYaw) * 0.20;
     } else {
+      // Desktop / Mouse Fallback
       const targetPitch = pointerDown ? clamp((1 - pointerNY) * 0.65 + 0.35, 0, 1) : 0;
-      const targetRoll = pointerDown ? clamp(pointerNX, -1, 1) : tiltRoll * 0.9;
-      const targetYaw = pointerDown ? clamp(pointerNY, -1, 1) : tiltYaw * 0.9;
+      const targetRoll = pointerDown ? clamp(pointerNX, -1, 1) : smoothRoll * 0.9;
+      const targetYaw = pointerDown ? clamp(pointerNY, -1, 1) : smoothYaw * 0.9;
 
-      tiltPitch += (targetPitch - tiltPitch) * 0.25;
-      tiltRoll += (targetRoll - tiltRoll) * 0.25;
-      tiltYaw += (targetYaw - tiltYaw) * 0.25;
+      smoothPitch += (targetPitch - smoothPitch) * 0.24;
+      smoothRoll += (targetRoll - smoothRoll) * 0.24;
+      smoothYaw += (targetYaw - smoothYaw) * 0.24;
+      dispPitchDeg = smoothPitch * pitchMaxDeg;
+      dispRollDeg = smoothRoll * rollMaxDeg;
     }
 
-    pourX = clamp(tiltRoll, -0.95, 0.95);
-    pourY = clamp(tiltYaw, -0.95, 0.95);
+    pourX = clamp(smoothRoll, -0.95, 0.95);
+    pourY = clamp(smoothYaw, -0.95, 0.95);
 
-    const flowRate = tiltPitch > 0.04 ? tiltPitch : 0;
-    const pitcherHeight = clamp(1 - tiltPitch * 0.95, 0.05, 1);
+    const flowRate = smoothPitch > 0.03 ? smoothPitch : 0;
 
-    stepFluid(flowRate, pitcherHeight);
-    render(flowRate, pitcherHeight);
-    updateSound(flowRate);
+    // Height calculation:
+    // Tilt-Coupled: gentle tilt (0..0.42) keeps spout high to sink/cut; deeper tilt drops spout low
+    // Pro-Hold: holding the Drop Spout button lowers the pitcher to 0.15; releasing keeps it high at 0.85
+    let spoutHeight = 0.85;
+    if (heightMode === 'prohold') {
+      spoutHeight = (proDropHeld || (pointerDown && !shiftHeld && !useGyro)) ? 0.15 : 0.85;
+    } else {
+      spoutHeight = (!useGyro && shiftHeld)
+        ? 0.85
+        : clamp(1.0 - smoothPitch * 1.18, 0.08, 0.95);
+    }
 
+    stepPhysics(flowRate, spoutHeight);
+    render(flowRate, spoutHeight);
+    renderHorizon(dispPitchDeg, dispRollDeg);
+    updateSound(flowRate, spoutHeight);
+
+    // Update HUD
     fillText.textContent = spilled ? 'SPILLED!' : `${Math.round(cupFill * 100)}%`;
     fillBar.style.width = `${Math.round(cupFill * 100)}%`;
     fillBar.style.background = spilled ? 'var(--bad)' : cupFill > 0.8 ? 'var(--good)' : 'var(--accent)';
 
-    flowText.textContent = flowRate <= 0.02 ? 'Idle' : flowRate < 0.45 ? 'Slow' : 'Fast';
+    flowText.textContent = flowRate <= 0.02 ? 'Idle' : flowRate < 0.45 ? 'Thin' : 'Thick';
     flowBar.style.width = `${Math.round(flowRate * 100)}%`;
 
-    heightText.textContent = pitcherHeight > 0.58 ? 'High (Sink)' : 'Low (Foam)';
-    heightBar.style.width = `${Math.round((1 - pitcherHeight) * 100)}%`;
-    heightBar.style.background = pitcherHeight <= 0.58 ? 'var(--good)' : 'var(--warn)';
+    const isLow = spoutHeight < 0.55;
+    heightText.textContent = isLow ? 'Low (Foam)' : 'High (Sink)';
+    heightBar.style.width = `${Math.round((1 - spoutHeight) * 100)}%`;
+    heightBar.style.background = isLow ? 'var(--good)' : 'var(--warn)';
+
+    telemetryText.textContent =
+      `Pitch: ${dispPitchDeg.toFixed(1)}° | Roll: ${dispRollDeg.toFixed(1)}° | Twist: ${dispTwistDeg.toFixed(1)}°`;
 
     requestAnimationFrame(loop);
   }
 
+  // ---------- Scoring ----------
   function scoreCup() {
     if (cupFill < 0.25) {
       return {
         score: 15,
         title: 'Needs More Milk!',
-        tip: 'Tilt forward a bit longer to fill the cup to at least 70–95%.'
+        tip: 'Tilt forward longer to fill the cup to 75–95%.'
       };
     }
 
     if (currentPattern === 'free') {
       let whiteCells = 0;
       let totalCells = 0;
-      for (let y = 0; y < N; y++) {
-        for (let x = 0; x < N; x++) {
-          const dx = x - CX;
-          const dy = y - CY;
-          if (dx * dx + dy * dy <= R * R) {
-            totalCells++;
-            if (foam[y * N + x] > 0.35) whiteCells++;
-          }
+      for (let i = 0; i < SIZE; i++) {
+        if (insideMask[i]) {
+          totalCells++;
+          if (foam[i] > 0.35) whiteCells++;
         }
       }
       const ratio = whiteCells / Math.max(1, totalCells);
-      const balanceScore = Math.round(clamp(100 - Math.abs(ratio - 0.35) * 180 - (spilled ? 20 : 0), 35, 99));
+      const balanceScore = Math.round(clamp(100 - Math.abs(ratio - 0.36) * 180 - (spilled ? 20 : 0), 35, 99));
       return {
         score: balanceScore,
-        title: spilled ? 'A Little Messy!' : 'Creative Free Pour!',
-        tip: spilled ? 'Ease back upright before reaching 100% so it stays in the cup.' : 'Nice microfoam contrast! Try Heart, Tulip, or Rosetta next.'
+        title: spilled ? 'Overfilled!' : 'Velvety Free Pour!',
+        tip: spilled ? 'Tilt upright before hitting 100%.' : 'Great stratification! Try Heart, Tulip, or Rosetta.'
       };
     }
 
     let match = 0;
     let targetTotal = 0;
     let outsideFoam = 0;
-
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const dx = x - CX;
-        const dy = y - CY;
-        if (dx * dx + dy * dy > R * R) continue;
-        const idx = y * N + x;
-        const f = foam[idx];
-        const t = targetMask[idx];
-        if (t > 0.5) {
-          targetTotal++;
-          match += clamp(f * 1.4, 0, 1);
-        } else {
-          outsideFoam += f;
-        }
+    for (let i = 0; i < SIZE; i++) {
+      if (!insideMask[i]) continue;
+      const f = foam[i];
+      if (targetMask[i] > 0.5) {
+        targetTotal++;
+        match += clamp(f * 1.45, 0, 1);
+      } else {
+        outsideFoam += f;
       }
     }
 
     const coverage = match / Math.max(1, targetTotal);
-    const precisionPenalty = (outsideFoam / Math.max(1, targetTotal)) * 0.42;
-    const fillBonus = cupFill > 0.7 && !spilled ? 12 : spilled ? -15 : 0;
-    const rawScore = Math.round(clamp((coverage - precisionPenalty) * 95 + fillBonus, 10, 99));
+    const penalty = (outsideFoam / Math.max(1, targetTotal)) * 0.42;
+    const bonus = (cupFill > 0.7 && !spilled) ? 12 : spilled ? -15 : 0;
+    const rawScore = Math.round(clamp((coverage - penalty) * 95 + bonus, 10, 99));
 
-    let tip = 'Great control! Try keeping your wiggles even smoother.';
-    if (spilled) {
-      tip = 'You overfilled the cup! Tilt upright as soon as the cup reaches 90%.';
-    } else if (coverage < 0.35) {
-      tip = 'Tilt further forward sooner so the spout drops low enough to lay white foam.';
-    } else if (precisionPenalty > 0.25) {
-      tip = 'Try starting closer to the center and keeping your stream tighter.';
-    }
+    let tip = 'Beautiful stratification and fluid symmetry!';
+    if (spilled) tip = 'Overfilled! Ease upright around 90% full.';
+    else if (coverage < 0.35) tip = 'Drop the spout lower (deeper tilt or Pro Hold) so microfoam floats on top.';
+    else if (penalty > 0.25) tip = 'Start near the center and use a brief high-spout pull-through to cut.';
 
     return {
       score: rawScore,
-      title: rawScore >= 85 ? 'Barista Level!' : rawScore >= 65 ? 'Tasty Pour!' : 'Keep Practicing!',
+      title: rawScore >= 85 ? 'Master Barista!' : rawScore >= 65 ? 'Solid Pour!' : 'Keep Practicing!',
       tip
     };
   }
 
-  function onOrientation(e) {
-    if (e.beta === null || e.gamma === null) return;
-    rawBeta = e.beta;
-    rawGamma = e.gamma;
-    rawAlpha = e.alpha || 0;
-    if (!hasGyroEvent) {
-      calibrate();
-      hasGyroEvent = true;
-      modeBadge.textContent = 'Gyro Active';
-    }
+  // ---------- Gyroscope & Calibration Listeners ----------
+  function calibrateZero() {
+    qZero = { ...qDev };
+    calibrated = true;
+    thumbSlideY = 0;
   }
 
-  function calibrate() {
-    baseBeta = rawBeta;
-    baseGamma = rawGamma;
-    baseAlpha = rawAlpha;
+  function onOrientation(e) {
+    if (e.beta === null || e.gamma === null) return;
+    qDev = eulerToQuat(e.alpha || 0, e.beta, e.gamma);
+    if (!hasGyroEvent) {
+      hasGyroEvent = true;
+      calibrateZero();
+      modeBadge.textContent = 'Quaternion Gyro Active';
+    }
   }
 
   async function enableGyro() {
@@ -914,7 +1388,6 @@
       try {
         const res = await DeviceOrientationEvent.requestPermission();
         if (res !== 'granted') {
-          alert('Gyroscope permission denied. Switching to Mouse/Touch fallback.');
           activateFallback();
           return;
         }
@@ -927,14 +1400,14 @@
     if ('DeviceOrientationEvent' in window) {
       useGyro = true;
       window.addEventListener('deviceorientation', onOrientation);
-      modeBadge.textContent = 'Waiting for motion...';
+      modeBadge.textContent = 'Calibrating quaternion...';
       startModal.classList.add('hidden');
       setTimeout(() => {
         if (!hasGyroEvent) {
-          modeBadge.textContent = 'No Gyro (Using Touch/Mouse)';
           useGyro = false;
-        } else {
-          calibrate();
+          modeBadge.textContent = 'No Gyro — Touch/Mouse Mode';
+        } else if (!calibrated) {
+          calibrateZero();
         }
       }, 900);
     } else {
@@ -948,34 +1421,28 @@
     startModal.classList.add('hidden');
   }
 
+  // Pointer & Touch handlers
   function updatePointer(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     pointerNX = ((clientX - rect.left) / rect.width - 0.5) * 2.4;
     pointerNY = ((clientY - rect.top) / rect.height - 0.5) * 2.4;
-    if (useGyro && !threeAxisMode) {
-      touchDragY = clamp(pointerNY, -1, 1);
+    if (useGyro && yAxisMode === 'thumb') {
+      thumbSlideY = clamp(pointerNY, -0.95, 0.95);
     }
   }
 
-  canvas.addEventListener('pointerdown', (e) => {
-    pointerDown = true;
-    updatePointer(e);
-  });
-  window.addEventListener('pointermove', (e) => {
-    if (pointerDown) updatePointer(e);
-  });
-  window.addEventListener('pointerup', () => {
-    pointerDown = false;
-  });
+  canvas.addEventListener('pointerdown', (e) => { pointerDown = true; updatePointer(e); });
+  window.addEventListener('pointermove', (e) => { if (pointerDown) updatePointer(e); });
+  window.addEventListener('pointerup', () => { pointerDown = false; });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftHeld = true; });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftHeld = false; });
 
+  // UI Listeners
   document.getElementById('enableGyroBtn').addEventListener('click', enableGyro);
   document.getElementById('desktopModeBtn').addEventListener('click', activateFallback);
-  document.getElementById('calibrateBtn').addEventListener('click', () => {
-    calibrate();
-    touchDragY = 0;
-  });
+  document.getElementById('calibrateBtn').addEventListener('click', calibrateZero);
   document.getElementById('resetBtn').addEventListener('click', resetCup);
 
   document.getElementById('serveBtn').addEventListener('click', () => {
@@ -996,9 +1463,9 @@
     guideBtn.classList.toggle('active', showGuide);
   });
 
-  axisBtn.addEventListener('click', () => {
-    threeAxisMode = !threeAxisMode;
-    axisBtn.textContent = threeAxisMode ? '3-Axis' : '2-Axis';
+  tuneBtn.addEventListener('click', () => {
+    const open = tuneDrawer.classList.toggle('open');
+    tuneBtn.classList.toggle('active', open);
   });
 
   soundBtn.addEventListener('click', () => {
@@ -1007,6 +1474,46 @@
     soundEnabled = !soundEnabled;
     soundBtn.textContent = soundEnabled ? 'Sound On' : 'Sound Off';
     soundBtn.classList.toggle('active', soundEnabled);
+  });
+
+  // Calibration sliders & selectors
+  document.getElementById('yAxisMode').addEventListener('change', (e) => {
+    yAxisMode = e.target.value;
+    thumbSlideY = 0;
+  });
+
+  document.getElementById('heightMode').addEventListener('change', (e) => {
+    heightMode = e.target.value;
+    proDropPad.classList.toggle('visible', heightMode === 'prohold');
+  });
+
+  document.getElementById('deadzoneSlider').addEventListener('input', (e) => {
+    deadzoneDeg = Number(e.target.value);
+    document.getElementById('deadzoneVal').textContent = `${deadzoneDeg}°`;
+  });
+
+  document.getElementById('pitchMaxSlider').addEventListener('input', (e) => {
+    pitchMaxDeg = Number(e.target.value);
+    document.getElementById('pitchMaxVal').textContent = `${pitchMaxDeg}°`;
+  });
+
+  document.getElementById('rollMaxSlider').addEventListener('input', (e) => {
+    rollMaxDeg = Number(e.target.value);
+    document.getElementById('rollMaxVal').textContent = `${rollMaxDeg}°`;
+  });
+
+  proDropPad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    proDropHeld = true;
+    proDropPad.classList.add('held');
+  });
+  window.addEventListener('pointerup', () => {
+    proDropHeld = false;
+    proDropPad.classList.remove('held');
+  });
+  window.addEventListener('pointercancel', () => {
+    proDropHeld = false;
+    proDropPad.classList.remove('held');
   });
 
   document.querySelectorAll('#patternBar button').forEach((btn) => {
@@ -1019,7 +1526,8 @@
     });
   });
 
-  initCrema();
+  // ---------- Boot ----------
+  initGrid();
   buildTargetMask(currentPattern);
   resetCup();
   requestAnimationFrame(loop);

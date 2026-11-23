@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>GyroLatte — Motion-Controlled Latte Art</title>
+  <style>
+    :root {
+      --bg: #181310;
+      --panel: #241c18;
+      --accent: #e09f5a;
+      --cream: #f6efe6;
+      --muted: #a69586;
+      --good: #6ec47e;
+      --warn: #e5b85c;
+      --bad: #df6b57;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      overscroll-behavior: none;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 50% 25%, #2b211b 0%, var(--bg) 75%);
+      color: var(--cream);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 18px;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    header {
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: 0.4px;
+      color: var(--cream);
+    }
+
+    .brand span {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 8px 13px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--panel);
+      color: var(--cream);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.1s ease, background 0.15s ease;
+    }
+
+    button:active {
+      transform: scale(0.96);
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #1c130d;
+      border-color: transparent;
+    }
+
+    button.active {
+      background: #3d2e25;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .patterns {
+      width: 100%;
+      max-width: 460px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .patterns button {
+      border-radius: 12px;
+      padding: 7px 4px;
+      font-size: 0.76rem;
+    }
+
+    .stage {
+      position: relative;
+      width: min(88vw, 390px);
+      height: min(88vw, 390px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 4px 0;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 24px;
+      touch-action: none;
+    }
+
+    .hud {
+      width: 100%;
+      max-width: 460px;
+      background: rgba(36, 28, 24, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .meters {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      font-size: 0.72rem;
+    }
+
+    .meter-box {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+      padding: 6px 8px;
+    }
+
+    .meter-label {
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar > div {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.06s linear;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .actions button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 12px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 11, 9, 0.86);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 20;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 390px;
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 1.3rem;
+    }
+
+    .card p {
+      margin: 0 0 14px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .tips {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--cream);
+    }
+
+    .score-big {
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin: 6px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <h1>☕ GyroLatte</h1>
+      <span id="modeBadge">Initializing sensors...</span>
+    </div>
+    <div class="pill-row">
+      <button id="guideBtn" class="active">Guide</button>
+      <button id="axisBtn">3-Axis</button>
+      <button id="soundBtn">Sound Off</button>
+    </div>
+  </header>
+
+  <div class="patterns" id="patternBar">
+    <button data-pattern="heart" class="active">Heart</button>
+    <button data-pattern="tulip">Tulip</button>
+    <button data-pattern="rosetta">Rosetta</button>
+    <button data-pattern="free">Free Pour</button>
+  </div>
+
+  <div class="stage">
+    <canvas id="latteCanvas" width="520" height="520"></canvas>
+  </div>
+
+  <div class="hud">
+    <div class="meters">
+      <div class="meter-box">
+        <div class="meter-label"><span>Cup Fill</span><span id="fillText">0%</span></div>
+        <div class="bar"><div id="fillBar"></div></div>
+      </div>
+      <div class="meter-box">
+        <div class="meter-label"><span>Flow</span><span id="flowText">Idle</span></div>
+        <div class="bar"><div id="flowBar"></div></div>
+      </div>
+      <div class="meter-box">
+        <div class="meter-label"><span>Height</span><span id="heightText">High</span></div>
+        <div class="bar"><div id="heightBar"></div></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="calibrateBtn">🎯 Zero Tilt</button>
+      <button id="resetBtn">♻️ Fresh Cup</button>
+      <button id="serveBtn" class="primary">✨ Serve</button>
+    </div>
+  </div>
+
+  <!-- Start / Permission Modal -->
+  <div class="modal" id="startModal">
+    <div class="card">
+      <h2>Hold Phone Like a Pitcher</h2>
+      <p>Pour real-time microfoam using your phone’s gyroscope instead of buttons.</p>
+      <div class="tips">
+        <strong>• Tilt Forward:</strong> Start pouring (tilt deeper for lower spout &amp; whiter foam)<br />
+        <strong>• Tilt Left / Right:</strong> Wiggle &amp; sweep across the cup<br />
+        <strong>• Twist Wrist (3-Axis) / Drag Y (2-Axis):</strong> Move front-to-back to stack &amp; cut through<br />
+        <strong>• Desktop fallback:</strong> Click &amp; drag on the cup to simulate tilting
+      </div>
+      <button id="enableGyroBtn" class="primary" style="width:100%; padding:13px; font-size:0.95rem;">
+        Enable Gyroscope &amp; Calibrate
+      </button>
+      <button id="desktopModeBtn" style="width:100%; margin-top:8px;">
+        Use Mouse / Touch Fallback
+      </button>
+    </div>
+  </div>
+
+  <!-- Score Modal -->
+  <div class="modal hidden" id="scoreModal">
+    <div class="card">
+      <h2 id="scoreTitle">Cup Served!</h2>
+      <div class="score-big" id="scoreValue">88/100</div>
+      <p id="scoreFeedback"></p>
+      <button id="nextCupBtn" class="primary" style="width:100%; padding:12px;">Pour Another Cup</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('latteCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  const N = 144;
+  const R = 65;
+  const CX = N / 2;
+  const CY = N / 2;
+
+  let foam = new Float32Array(N * N);
+  let foamNext = new Float32Array(N * N);
+  let velX = new Float32Array(N * N);
+  let velY = new Float32Array(N * N);
+  let cremaNoise = new Float32Array(N * N);
+  let targetMask = new Float32Array(N * N);
+
+  const simCanvas = document.createElement('canvas');
+  simCanvas.width = N;
+  simCanvas.height = N;
+  const simCtx = simCanvas.getContext('2d');
+  const simImg = simCtx.createImageData(N, N);
+
+  let currentPattern = 'heart';
+  let showGuide = true;
+  let threeAxisMode = true;
+  let useGyro = false;
+  let soundEnabled = false;
+  let audioCtx = null;
+  let pourGain = null;
+  let pourFilter = null;
+
+  let cupFill = 0;
+  let spilled = false;
+
+  let baseBeta = 42;
+  let baseGamma = 0;
+  let baseAlpha = 0;
+  let rawBeta = 42;
+  let rawGamma = 0;
+  let rawAlpha = 0;
+  let hasGyroEvent = false;
+
+  let tiltPitch = 0;
+  let tiltRoll = 0;
+  let tiltYaw = 0;
+  let touchDragY = 0;
+
+  let pourX = 0;
+  let pourY = 0;
+  let prevPourX = 0;
+  let prevPourY = 0;
+
+  let pointerDown = false;
+  let pointerNX = 0;
+  let pointerNY = 0;
+
+  const modeBadge = document.getElementById('modeBadge');
+  const guideBtn = document.getElementById('guideBtn');
+  const axisBtn = document.getElementById('axisBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const fillText = document.getElementById('fillText');
+  const fillBar = document.getElementById('fillBar');
+  const flowText = document.getElementById('flowText');
+  const flowBar = document.getElementById('flowBar');
+  const heightText = document.getElementById('heightText');
+  const heightBar = document.getElementById('heightBar');
+  const startModal = document.getElementById('startModal');
+  const scoreModal = document.getElementById('scoreModal');
+
+  function clamp(v, min, max) {
+    return v < min ? min : v > max ? max : v;
+  }
+
+  function wrapAngleDelta(a, b) {
+    return ((a - b + 540) % 360) - 180;
+  }
+
+  function initCrema() {
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const idx = y * N + x;
+        const n = Math.sin(x * 0.23 + y * 0.17) * 0.5 +
+                  Math.cos(x * 0.11 - y * 0.29) * 0.5;
+        cremaNoise[idx] = n * 0.06;
+      }
+    }
+  }
+
+  function buildTargetMask(pattern) {
+    targetMask.fill(0);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const nx = (x - CX) / R;
+        const ny = (y - CY) / R;
+        if (nx * nx + ny * ny > 1) continue;
+
+        let val = 0;
+        if (pattern === 'heart') {
+          const hx = nx * 1.65;
+          const hy = -(ny - 0.05) * 1.7;
+          const eq = Math.pow(hx * hx + hy * hy - 0.55, 3) - hx * hx * hy * hy * hy;
+          val = eq < 0 ? 1 : 0;
+        } else if (pattern === 'tulip') {
+          const c1 = Math.hypot(nx / 0.55, (ny + 0.34) / 0.22) < 1;
+          const c2 = Math.hypot(nx / 0.44, (ny + 0.02) / 0.20) < 1;
+          const c3 = Math.hypot(nx / 0.30, (ny - 0.28) / 0.18) < 1;
+          const stem = Math.abs(nx) < 0.045 && ny > -0.35 && ny < 0.52;
+          val = (c1 || c2 || c3 || stem) ? 1 : 0;
+        } else if (pattern === 'rosetta') {
+          const stem = Math.abs(nx) < 0.04 && ny > -0.52 && ny < 0.56;
+          const leafWidth = 0.55 * Math.max(0, 1 - Math.abs(ny + 0.05) * 1.15);
+          const wave = Math.abs(Math.sin(ny * 15)) * 0.65 + 0.35;
+          const leaves = Math.abs(nx) < leafWidth * wave && ny > -0.55 && ny < 0.42;
+          const topHeart = Math.hypot(nx / 0.28, (ny + 0.48) / 0.16) < 1;
+          val = (stem || leaves || topHeart) ? 1 : 0;
+        }
+        targetMask[y * N + x] = val;
+      }
+    }
+  }
+
+  function resetCup() {
+    foam.fill(0);
+    foamNext.fill(0);
+    velX.fill(0);
+    velY.fill(0);
+    cupFill = 0;
+    spilled = false;
+    pourX = 0;
+    pourY = 0;
+    prevPourX = 0;
+    prevPourY = 0;
+  }
+
+  function initSound() {
+    if (audioCtx) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    audioCtx = new AudioContext();
+
+    const bufferSize = audioCtx.sampleRate * 2;
+    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+
+    const whiteNoise = audioCtx.createBufferSource();
+    whiteNoise.buffer = noiseBuffer;
+    whiteNoise.loop = true;
+
+    pourFilter = audioCtx.createBiquadFilter();
+    pourFilter.type = 'bandpass';
+    pourFilter.frequency.value = 550;
+    pourFilter.Q.value = 1.4;
+
+    pourGain = audioCtx.createGain();
+    pourGain.gain.value = 0;
+
+    whiteNoise.connect(pourFilter);
+    pourFilter.connect(pourGain);
+    pourGain.connect(audioCtx.destination);
+    whiteNoise.start();
+  }
+
+  function updateSound(flow) {
+    if (!audioCtx || !pourGain) return;
+    if (!soundEnabled || flow <= 0.02 || spilled) {
+      pourGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+      return;
+    }
+    const freq = 400 + cupFill * 480 + flow * 180;
+    pourFilter.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.05);
+    pourGain.gain.setTargetAtTime(flow * 0.12, audioCtx.currentTime, 0.04);
+  }
+
+  function stepFluid(flowRate, pitcherHeight) {
+    if (flowRate > 0.02 && !spilled) {
+      const gx = CX + pourX * (R * 0.72);
+      const gy = CY + pourY * (R * 0.72);
+      const moveVX = (pourX - prevPourX) * 55;
+      const moveVY = (pourY - prevPourY) * 55;
+
+      const foamStrength = pitcherHeight < 0.58
+        ? (0.58 - pitcherHeight) * 1.45 * flowRate
+        : 0.035 * flowRate;
+
+      const impactRadius = 5.5 + flowRate * 6.5;
+      const rSq = impactRadius * impactRadius;
+
+      const minX = Math.max(1, Math.floor(gx - impactRadius - 2));
+      const maxX = Math.min(N - 2, Math.ceil(gx + impactRadius + 2));
+      const minY = Math.max(1, Math.floor(gy - impactRadius - 2));
+      const maxY = Math.min(N - 2, Math.ceil(gy + impactRadius + 2));
+
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const dx = x - gx;
+          const dy = y - gy;
+          const distSq = dx * dx + dy * dy;
+          if (distSq > rSq) continue;
+
+          const dist = Math.sqrt(distSq) + 0.001;
+          const falloff = 1 - dist / impactRadius;
+          const idx = y * N + x;
+
+          foam[idx] = clamp(foam[idx] + foamStrength * falloff * 0.38, 0, 1);
+
+          const push = flowRate * falloff * 1.65;
+          velX[idx] += (dx / dist) * push + moveVX * falloff * 0.25;
+          velY[idx] += (dy / dist) * push + moveVY * falloff * 0.25;
+        }
+      }
+
+      cupFill += flowRate * 0.0036;
+      if (cupFill >= 1) {
+        cupFill = 1;
+        spilled = true;
+      }
+    }
+
+    const dt = 0.85;
+    for (let y = 1; y < N - 1; y++) {
+      for (let x = 1; x < N - 1; x++) {
+        const idx = y * N + x;
+        const dx = x - CX;
+        const dy = y - CY;
+        if (dx * dx + dy * dy > R * R) {
+          foamNext[idx] = 0;
+          velX[idx] = 0;
+          velY[idx] = 0;
+          continue;
+        }
+
+        let sx = x - velX[idx] * dt;
+        let sy = y - velY[idx] * dt;
+
+        const sdx = sx - CX;
+        const sdy = sy - CY;
+        const sDist = Math.hypot(sdx, sdy);
+        if (sDist > R - 1) {
+          const scale = (R - 1) / sDist;
+          sx = CX + sdx * scale;
+          sy = CY + sdy * scale;
+        }
+
+        const x0 = Math.floor(sx);
+        const y0 = Math.floor(sy);
+        const fx = sx - x0;
+        const fy = sy - y0;
+
+        const i00 = y0 * N + x0;
+        const i10 = i00 + 1;
+        const i01 = i00 + N;
+        const i11 = i01 + 1;
+
+        const top = foam[i00] * (1 - fx) + foam[i10] * fx;
+        const bot = foam[i01] * (1 - fx) + foam[i11] * fx;
+        foamNext[idx] = top * (1 - fy) + bot * fy;
+
+        velX[idx] *= 0.88;
+        velY[idx] *= 0.88;
+      }
+    }
+
+    const temp = foam;
+    foam = foamNext;
+    foamNext = temp;
+  }
+
+  function render(flowRate, pitcherHeight) {
+    ctx.clearRect(0, 0, W, H);
+
+    const cupCenterX = W / 2;
+    const cupCenterY = H / 2 + 10;
+    const outerRadius = W * 0.39;
+    const innerRadius = W * 0.34;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cupCenterX, cupCenterY + 6, W * 0.46, 0, Math.PI * 2);
+    const saucerGrad = ctx.createRadialGradient(
+      cupCenterX - 20, cupCenterY - 20, W * 0.1,
+      cupCenterX, cupCenterY + 6, W * 0.46
+    );
+    saucerGrad.addColorStop(0, '#3e342f');
+    saucerGrad.addColorStop(0.85, '#29211d');
+    saucerGrad.addColorStop(1, '#1a1411');
+    ctx.fillStyle = saucerGrad;
+    ctx.fill();
+    ctx.restore();
+
+    if (spilled) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cupCenterX + 40, cupCenterY + outerRadius + 12, 34, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(246, 239, 230, 0.82)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cupCenterX + outerRadius + 16, cupCenterY, 26, 15, 0, 0, Math.PI * 2);
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#efe6dc';
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cupCenterX, cupCenterY, outerRadius, 0, Math.PI * 2);
+    const rimGrad = ctx.createLinearGradient(0, cupCenterY - outerRadius, 0, cupCenterY + outerRadius);
+    rimGrad.addColorStop(0, '#ffffff');
+    rimGrad.addColorStop(1, '#cfc2b6');
+    ctx.fillStyle = rimGrad;
+    ctx.fill();
+    ctx.restore();
+
+    const data = simImg.data;
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const idx = y * N + x;
+        const p = idx * 4;
+        const dx = x - CX;
+        const dy = y - CY;
+        if (dx * dx + dy * dy > R * R) {
+          data[p + 3] = 0;
+          continue;
+        }
+
+        const f = foam[idx];
+        const edgeShade = Math.max(0, 1 - (dx * dx + dy * dy) / (R * R) * 0.22);
+        const baseLighten = cupFill * 0.28;
+        const cremaR = (138 + baseLighten * 65 + cremaNoise[idx] * 90) * edgeShade;
+        const cremaG = (76 + baseLighten * 55 + cremaNoise[idx] * 60) * edgeShade;
+        const cremaB = (34 + baseLighten * 38 + cremaNoise[idx] * 35) * edgeShade;
+
+        const milkR = 250;
+        const milkG = 243;
+        const milkB = 232;
+
+        const mix = clamp(Math.pow(f, 0.85), 0, 1);
+        data[p] = cremaR * (1 - mix) + milkR * mix;
+        data[p + 1] = cremaG * (1 - mix) + milkG * mix;
+        data[p + 2] = cremaB * (1 - mix) + milkB * mix;
+        data[p + 3] = 255;
+      }
+    }
+    simCtx.putImageData(simImg, 0, 0);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cupCenterX, cupCenterY, innerRadius, 0, Math.PI * 2);
+    ctx.clip();
+    const drawScale = (innerRadius * 2) / (R * 2);
+    const drawSize = N * drawScale;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(simCanvas, cupCenterX - drawSize / 2, cupCenterY - drawSize / 2, drawSize, drawSize);
+
+    if (showGuide && currentPattern !== 'free') {
+      ctx.globalAlpha = 0.16;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      if (currentPattern === 'heart') {
+        ctx.beginPath();
+        ctx.arc(cupCenterX - 24, cupCenterY - 14, 28, Math.PI, 0);
+        ctx.arc(cupCenterX + 24, cupCenterY - 14, 28, Math.PI, 0);
+        ctx.lineTo(cupCenterX, cupCenterY + 52);
+        ctx.closePath();
+        ctx.stroke();
+      } else if (currentPattern === 'tulip') {
+        [-38, 0, 34].forEach((offsetY, i) => {
+          ctx.beginPath();
+          ctx.ellipse(cupCenterX, cupCenterY + offsetY, 44 - i * 11, 20 - i * 2, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+      } else if (currentPattern === 'rosetta') {
+        for (let i = -3; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.ellipse(cupCenterX, cupCenterY + i * 16, 48 - Math.abs(i) * 8, 9, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+
+    const targetX = cupCenterX + pourX * (innerRadius * 0.72);
+    const targetY = cupCenterY + pourY * (innerRadius * 0.72);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, 6 + flowRate * 5, 0, Math.PI * 2);
+    ctx.strokeStyle = flowRate > 0.02 ? 'rgba(255,255,255,0.85)' : 'rgba(224,159,90,0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    const spoutX = targetX + 36 + tiltRoll * 14;
+    const spoutY = targetY - 68 - pitcherHeight * 42;
+
+    if (flowRate > 0.02 && !spilled) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(spoutX, spoutY);
+      ctx.quadraticCurveTo(spoutX - 8, (spoutY + targetY) / 2, targetX, targetY);
+      ctx.lineWidth = 2.5 + flowRate * 7;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(252, 247, 240, 0.92)';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(spoutX, spoutY);
+    ctx.rotate(-0.35 - tiltPitch * 0.55 + tiltRoll * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(44, -18);
+    ctx.lineTo(54, 28);
+    ctx.lineTo(10, 32);
+    ctx.closePath();
+    const steelGrad = ctx.createLinearGradient(0, -18, 54, 32);
+    steelGrad.addColorStop(0, '#dcdcdc');
+    steelGrad.addColorStop(0.5, '#9d9d9d');
+    steelGrad.addColorStop(1, '#666666');
+    ctx.fillStyle = steelGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function loop() {
+    prevPourX = pourX;
+    prevPourY = pourY;
+
+    if (useGyro && hasGyroEvent) {
+      const dBeta = baseBeta - rawBeta;
+      const dGamma = rawGamma - baseGamma;
+      const dAlpha = wrapAngleDelta(rawAlpha, baseAlpha);
+
+      const targetPitch = clamp((dBeta - 4) / 34, 0, 1);
+      const targetRoll = clamp(dGamma / 28, -1, 1);
+      const targetYaw = threeAxisMode ? clamp(-dAlpha / 28, -1, 1) : touchDragY;
+
+      tiltPitch += (targetPitch - tiltPitch) * 0.22;
+      tiltRoll += (targetRoll - tiltRoll) * 0.25;
+      tiltYaw += (targetYaw - tiltYaw) * 0.22;
+    } else {
+      const targetPitch = pointerDown ? clamp((1 - pointerNY) * 0.65 + 0.35, 0, 1) : 0;
+      const targetRoll = pointerDown ? clamp(pointerNX, -1, 1) : tiltRoll * 0.9;
+      const targetYaw = pointerDown ? clamp(pointerNY, -1, 1) : tiltYaw * 0.9;
+
+      tiltPitch += (targetPitch - tiltPitch) * 0.25;
+      tiltRoll += (targetRoll - tiltRoll) * 0.25;
+      tiltYaw += (targetYaw - tiltYaw) * 0.25;
+    }
+
+    pourX = clamp(tiltRoll, -0.95, 0.95);
+    pourY = clamp(tiltYaw, -0.95, 0.95);
+
+    const flowRate = tiltPitch > 0.04 ? tiltPitch : 0;
+    const pitcherHeight = clamp(1 - tiltPitch * 0.95, 0.05, 1);
+
+    stepFluid(flowRate, pitcherHeight);
+    render(flowRate, pitcherHeight);
+    updateSound(flowRate);
+
+    fillText.textContent = spilled ? 'SPILLED!' : `${Math.round(cupFill * 100)}%`;
+    fillBar.style.width = `${Math.round(cupFill * 100)}%`;
+    fillBar.style.background = spilled ? 'var(--bad)' : cupFill > 0.8 ? 'var(--good)' : 'var(--accent)';
+
+    flowText.textContent = flowRate <= 0.02 ? 'Idle' : flowRate < 0.45 ? 'Slow' : 'Fast';
+    flowBar.style.width = `${Math.round(flowRate * 100)}%`;
+
+    heightText.textContent = pitcherHeight > 0.58 ? 'High (Sink)' : 'Low (Foam)';
+    heightBar.style.width = `${Math.round((1 - pitcherHeight) * 100)}%`;
+    heightBar.style.background = pitcherHeight <= 0.58 ? 'var(--good)' : 'var(--warn)';
+
+    requestAnimationFrame(loop);
+  }
+
+  function scoreCup() {
+    if (cupFill < 0.25) {
+      return {
+        score: 15,
+        title: 'Needs More Milk!',
+        tip: 'Tilt forward a bit longer to fill the cup to at least 70–95%.'
+      };
+    }
+
+    if (currentPattern === 'free') {
+      let whiteCells = 0;
+      let totalCells = 0;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const dx = x - CX;
+          const dy = y - CY;
+          if (dx * dx + dy * dy <= R * R) {
+            totalCells++;
+            if (foam[y * N + x] > 0.35) whiteCells++;
+          }
+        }
+      }
+      const ratio = whiteCells / Math.max(1, totalCells);
+      const balanceScore = Math.round(clamp(100 - Math.abs(ratio - 0.35) * 180 - (spilled ? 20 : 0), 35, 99));
+      return {
+        score: balanceScore,
+        title: spilled ? 'A Little Messy!' : 'Creative Free Pour!',
+        tip: spilled ? 'Ease back upright before reaching 100% so it stays in the cup.' : 'Nice microfoam contrast! Try Heart, Tulip, or Rosetta next.'
+      };
+    }
+
+    let match = 0;
+    let targetTotal = 0;
+    let outsideFoam = 0;
+
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const dx = x - CX;
+        const dy = y - CY;
+        if (dx * dx + dy * dy > R * R) continue;
+        const idx = y * N + x;
+        const f = foam[idx];
+        const t = targetMask[idx];
+        if (t > 0.5) {
+          targetTotal++;
+          match += clamp(f * 1.4, 0, 1);
+        } else {
+          outsideFoam += f;
+        }
+      }
+    }
+
+    const coverage = match / Math.max(1, targetTotal);
+    const precisionPenalty = (outsideFoam / Math.max(1, targetTotal)) * 0.42;
+    const fillBonus = cupFill > 0.7 && !spilled ? 12 : spilled ? -15 : 0;
+    const rawScore = Math.round(clamp((coverage - precisionPenalty) * 95 + fillBonus, 10, 99));
+
+    let tip = 'Great control! Try keeping your wiggles even smoother.';
+    if (spilled) {
+      tip = 'You overfilled the cup! Tilt upright as soon as the cup reaches 90%.';
+    } else if (coverage < 0.35) {
+      tip = 'Tilt further forward sooner so the spout drops low enough to lay white foam.';
+    } else if (precisionPenalty > 0.25) {
+      tip = 'Try starting closer to the center and keeping your stream tighter.';
+    }
+
+    return {
+      score: rawScore,
+      title: rawScore >= 85 ? 'Barista Level!' : rawScore >= 65 ? 'Tasty Pour!' : 'Keep Practicing!',
+      tip
+    };
+  }
+
+  function onOrientation(e) {
+    if (e.beta === null || e.gamma === null) return;
+    rawBeta = e.beta;
+    rawGamma = e.gamma;
+    rawAlpha = e.alpha || 0;
+    if (!hasGyroEvent) {
+      calibrate();
+      hasGyroEvent = true;
+      modeBadge.textContent = 'Gyro Active';
+    }
+  }
+
+  function calibrate() {
+    baseBeta = rawBeta;
+    baseGamma = rawGamma;
+    baseAlpha = rawAlpha;
+  }
+
+  async function enableGyro() {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const res = await DeviceOrientationEvent.requestPermission();
+        if (res !== 'granted') {
+          alert('Gyroscope permission denied. Switching to Mouse/Touch fallback.');
+          activateFallback();
+          return;
+        }
+      } catch (err) {
+        activateFallback();
+        return;
+      }
+    }
+
+    if ('DeviceOrientationEvent' in window) {
+      useGyro = true;
+      window.addEventListener('deviceorientation', onOrientation);
+      modeBadge.textContent = 'Waiting for motion...';
+      startModal.classList.add('hidden');
+      setTimeout(() => {
+        if (!hasGyroEvent) {
+          modeBadge.textContent = 'No Gyro (Using Touch/Mouse)';
+          useGyro = false;
+        } else {
+          calibrate();
+        }
+      }, 900);
+    } else {
+      activateFallback();
+    }
+  }
+
+  function activateFallback() {
+    useGyro = false;
+    modeBadge.textContent = 'Mouse / Touch Mode';
+    startModal.classList.add('hidden');
+  }
+
+  function updatePointer(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    pointerNX = ((clientX - rect.left) / rect.width - 0.5) * 2.4;
+    pointerNY = ((clientY - rect.top) / rect.height - 0.5) * 2.4;
+    if (useGyro && !threeAxisMode) {
+      touchDragY = clamp(pointerNY, -1, 1);
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    pointerDown = true;
+    updatePointer(e);
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (pointerDown) updatePointer(e);
+  });
+  window.addEventListener('pointerup', () => {
+    pointerDown = false;
+  });
+
+  document.getElementById('enableGyroBtn').addEventListener('click', enableGyro);
+  document.getElementById('desktopModeBtn').addEventListener('click', activateFallback);
+  document.getElementById('calibrateBtn').addEventListener('click', () => {
+    calibrate();
+    touchDragY = 0;
+  });
+  document.getElementById('resetBtn').addEventListener('click', resetCup);
+
+  document.getElementById('serveBtn').addEventListener('click', () => {
+    const res = scoreCup();
+    document.getElementById('scoreTitle').textContent = res.title;
+    document.getElementById('scoreValue').textContent = `${res.score}/100`;
+    document.getElementById('scoreFeedback').textContent = res.tip;
+    scoreModal.classList.remove('hidden');
+  });
+
+  document.getElementById('nextCupBtn').addEventListener('click', () => {
+    scoreModal.classList.add('hidden');
+    resetCup();
+  });
+
+  guideBtn.addEventListener('click', () => {
+    showGuide = !showGuide;
+    guideBtn.classList.toggle('active', showGuide);
+  });
+
+  axisBtn.addEventListener('click', () => {
+    threeAxisMode = !threeAxisMode;
+    axisBtn.textContent = threeAxisMode ? '3-Axis' : '2-Axis';
+  });
+
+  soundBtn.addEventListener('click', () => {
+    initSound();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    soundEnabled = !soundEnabled;
+    soundBtn.textContent = soundEnabled ? 'Sound On' : 'Sound Off';
+    soundBtn.classList.toggle('active', soundEnabled);
+  });
+
+  document.querySelectorAll('#patternBar button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#patternBar button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPattern = btn.dataset.pattern;
+      buildTargetMask(currentPattern);
+      resetCup();
+    });
+  });
+
+  initCrema();
+  buildTargetMask(currentPattern);
+  resetCup();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

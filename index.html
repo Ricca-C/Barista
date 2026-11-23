@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>GyroLatte CFD — Physics &amp; Quaternion Calibration</title>
+  <title>GyroLatte CFD — Pitcher-on-Table Calibration</title>
   <style>
     :root {
       --bg: #15100d;
@@ -130,7 +130,6 @@
       touch-action: none;
     }
 
-    /* Mini Quaternion Horizon Overlay */
     .horizon-wrap {
       position: absolute;
       top: 8px;
@@ -232,7 +231,6 @@
       border-radius: 12px;
     }
 
-    /* Calibration Drawer */
     .tune-drawer {
       width: 100%;
       max-width: 460px;
@@ -367,13 +365,19 @@
 
   <div class="stage">
     <canvas id="latteCanvas" width="520" height="520"></canvas>
-    <div class="horizon-wrap" title="Calibrated Pitcher Attitude">
+    <div class="horizon-wrap" title="Pitcher Level Relative to Table">
       <canvas id="horizonCanvas" width="128" height="128"></canvas>
     </div>
   </div>
 
-  <!-- Collapsible Calibration & Control Settings -->
   <div class="tune-drawer" id="tuneDrawer">
+    <div class="tune-row">
+      <label>Zero Reference</label>
+      <select id="zeroRefMode">
+        <option value="table">Table Flat (Gravity 0°)</option>
+        <option value="custom">Custom Hand Angle</option>
+      </select>
+    </div>
     <div class="tune-row">
       <label>Y-Axis Control</label>
       <select id="yAxisMode">
@@ -394,8 +398,8 @@
       <input id="deadzoneSlider" type="range" min="1" max="12" step="1" value="4" />
     </div>
     <div class="tune-row">
-      <label>Pour Range: <span id="pitchMaxVal">30°</span></label>
-      <input id="pitchMaxSlider" type="range" min="15" max="50" step="1" value="30" />
+      <label>Pour Range: <span id="pitchMaxVal">34°</span></label>
+      <input id="pitchMaxSlider" type="range" min="15" max="55" step="1" value="34" />
     </div>
     <div class="tune-row">
       <label>Wiggle Range: <span id="rollMaxVal">24°</span></label>
@@ -425,25 +429,25 @@
     <div class="pro-drop" id="proDropPad">HOLD TO DROP SPOUT LOW (FLOAT FOAM)</div>
 
     <div class="actions">
-      <button id="calibrateBtn">🎯 Zero Tilt</button>
+      <button id="calibrateBtn">🎯 Center Yaw</button>
       <button id="resetBtn">♻️ Fresh Cup</button>
       <button id="serveBtn" class="primary">✨ Serve</button>
     </div>
   </div>
 
-  <!-- Start Modal -->
   <div class="modal" id="startModal">
     <div class="card">
-      <h2>Hold Phone Like a Milk Pitcher</h2>
-      <p>Real-time Navier–Stokes microfoam fluid physics driven by quaternion gyroscope tracking.</p>
+      <h2>Your Phone Is the Milk Pitcher</h2>
+      <p>Resting your phone flat on a table equals an upright pitcher resting on a table (0° idle).</p>
       <div class="tips">
-        <strong>1. Zero Anywhere:</strong> Hold your phone at any natural grip angle and tap Enable—quaternion math prevents gimbal lock.<br />
-        <strong>2. High vs. Low Jet:</strong> Slight forward tilt pours high (penetrates under crema to set the base). Deeper tilt drops the spout low to float crisp white foam.<br />
-        <strong>3. Cut Cleanly:</strong> Lift slightly back while pulling forward to thin the jet and slice through Hearts or Tulips.<br />
-        <strong>• Desktop:</strong> Drag on the cup (hold Shift for high/submerge pour).
+        <strong>• Table Flat = Resting Pitcher:</strong> Hold your phone level like a pitcher base to stay at 0% pour.<br />
+        <strong>• Tip Top Edge Down:</strong> Pour forward out of the top "spout." Slight tip sets the base; deeper tip drops low for white foam.<br />
+        <strong>• Tilt Left / Right:</strong> Wiggle across the cup.<br />
+        <strong>• Twist Wrist / Slide Thumb:</strong> Sweep front-to-back.<br />
+        <strong>• Desktop:</strong> Drag on the cup (hold Shift for high pour).
       </div>
       <button id="enableGyroBtn" class="primary" style="width:100%; padding:13px; font-size:0.95rem;">
-        Enable Gyroscope &amp; Zero Tilt
+        Enable Gyroscope
       </button>
       <button id="desktopModeBtn" style="width:100%; margin-top:8px;">
         Use Mouse / Touch Fallback
@@ -451,7 +455,6 @@
     </div>
   </div>
 
-  <!-- Score Modal -->
   <div class="modal hidden" id="scoreModal">
     <div class="card">
       <h2 id="scoreTitle">Cup Served!</h2>
@@ -463,7 +466,6 @@
 
 <script>
 (() => {
-  // ---------- Constants & Canvas ----------
   const canvas = document.getElementById('latteCanvas');
   const ctx = canvas.getContext('2d');
   const W = canvas.width;
@@ -472,18 +474,16 @@
   const hCanvas = document.getElementById('horizonCanvas');
   const hCtx = hCanvas.getContext('2d');
 
-  // Eulerian Fluid Grid (128x128 runs smoothly at 60fps on mobile)
   const N = 128;
   const SIZE = N * N;
   const CX = N / 2;
   const CY = N / 2;
-  const R = 57; // Cup radius in grid cells
+  const R = 57;
 
   const insideMask = new Uint8Array(SIZE);
   const cremaNoise = new Float32Array(SIZE);
   const targetMask = new Float32Array(SIZE);
 
-  // Fluid velocity, pressure, vorticity
   let u = new Float32Array(SIZE);
   let v = new Float32Array(SIZE);
   let uNext = new Float32Array(SIZE);
@@ -493,12 +493,8 @@
   const sourceField = new Float32Array(SIZE);
   const curlField = new Float32Array(SIZE);
 
-  // Two-layer stratification fields:
-  // foam = buoyant surface microfoam (white wet-paint layer)
-  // baseMix = subsurface milk-espresso blend (dark espresso -> golden crema)
   let foam = new Float32Array(SIZE);
   let foamHat = new Float32Array(SIZE);
-  let foamBack = new Float32Array(SIZE);
   let foamNext = new Float32Array(SIZE);
   let baseMix = new Float32Array(SIZE);
   let baseMixNext = new Float32Array(SIZE);
@@ -509,7 +505,6 @@
   const simCtx = simCanvas.getContext('2d');
   const simImg = simCtx.createImageData(N, N);
 
-  // ---------- App & Calibration Settings ----------
   const DEG2RAD = Math.PI / 180;
   const RAD2DEG = 180 / Math.PI;
 
@@ -518,26 +513,26 @@
   let useGyro = false;
   let hasGyroEvent = false;
 
-  // Calibration config
+  // Calibration & control modes
+  let zeroRefMode = 'table';    // 'table' (gravity flat = 0°) | 'custom' (hand posture = 0°)
   let yAxisMode = 'twist';      // 'twist' | 'thumb' | 'autocut'
   let heightMode = 'coupled';   // 'coupled' | 'prohold'
   let deadzoneDeg = 4;
-  let pitchMaxDeg = 30;
+  let pitchMaxDeg = 34;
   let rollMaxDeg = 24;
   let proDropHeld = false;
 
-  // Quaternion calibration state
   let qDev = { w: 1, x: 0, y: 0, z: 0 };
   let qZero = { w: 1, x: 0, y: 0, z: 0 };
+  let alphaZero = 0;
+  let rawAlpha = 0;
   let calibrated = false;
 
-  // Smoothed normalized controls
-  let smoothPitch = 0; // 0..1
-  let smoothRoll = 0;  // -1..1
-  let smoothYaw = 0;   // -1..1
-  let thumbSlideY = 0; // -1..1 for 2-axis mode
+  let smoothPitch = 0;
+  let smoothRoll = 0;
+  let smoothYaw = 0;
+  let thumbSlideY = 0;
 
-  // Pour coordinates (-1..1)
   let pourX = 0;
   let pourY = 0;
   let prevPourX = 0;
@@ -545,25 +540,23 @@
   let cupFill = 0;
   let spilled = false;
 
-  // Desktop / Touch fallback
   let pointerDown = false;
   let pointerNX = 0;
   let pointerNY = 0;
   let shiftHeld = false;
 
-  // Audio
   let soundEnabled = false;
   let audioCtx = null;
   let pourGain = null;
   let pourFilter = null;
 
-  // ---------- UI Refs ----------
   const modeBadge = document.getElementById('modeBadge');
   const guideBtn = document.getElementById('guideBtn');
   const tuneBtn = document.getElementById('tuneBtn');
   const tuneDrawer = document.getElementById('tuneDrawer');
   const soundBtn = document.getElementById('soundBtn');
   const proDropPad = document.getElementById('proDropPad');
+  const calibrateBtn = document.getElementById('calibrateBtn');
   const telemetryText = document.getElementById('telemetryText');
   const fillText = document.getElementById('fillText');
   const fillBar = document.getElementById('fillBar');
@@ -575,10 +568,15 @@
   const scoreModal = document.getElementById('scoreModal');
 
   function clamp(val, min, max) {
-    return val < min ? min : val > max ? max : val;
+    if (!(val >= min)) return min;
+    return val > max ? max : val;
   }
 
-  // ---------- Quaternion Math (W3C Z-X'-Y'' Convention) ----------
+  function wrapAngleDelta(a, b) {
+    return ((a - b + 540) % 360) - 180;
+  }
+
+  // ---------- Quaternion Math (W3C Z-X'-Y'') ----------
   function eulerToQuat(alpha, beta, gamma) {
     const x = (beta || 0) * DEG2RAD;
     const y = (gamma || 0) * DEG2RAD;
@@ -622,19 +620,28 @@
     };
   }
 
-  // Extract gimbal-lock-free Pitch, Roll (device local frame) & Twist (world vertical frame)
   function getCalibratedAngles() {
+    if (zeroRefMode === 'table') {
+      // Gravity-locked pitcher model:
+      // Phone flat on a table (screen facing up) -> uLocal = (0, 0, +1) -> 0° Pitch, 0° Roll.
+      // Tipping the top edge downward toward the table/cup gives positive pitchDeg.
+      const qDevInv = quatConjugate(qDev);
+      const uLocal = rotateVec(qDevInv, 0, 0, 1);
+
+      const pitchDeg = Math.atan2(-uLocal.y, uLocal.z) * RAD2DEG;
+      const rollDeg = Math.atan2(-uLocal.x, Math.hypot(uLocal.y, uLocal.z)) * RAD2DEG;
+      const twistDeg = wrapAngleDelta(rawAlpha, alphaZero);
+      return { pitchDeg, rollDeg, twistDeg };
+    }
+
+    // Custom hand-grip quaternion zeroing
     const qZeroInv = quatConjugate(qZero);
-    // Relative rotation in the calibrated phone's own local axes
     const qLocal = quatMultiply(qZeroInv, qDev);
     const vZ = rotateVec(qLocal, 0, 0, 1);
 
-    // Pitch forward (top edge down toward cup) -> positive degrees
     const pitchDeg = Math.atan2(vZ.y, vZ.z) * RAD2DEG;
-    // Roll left/right around phone spine -> positive = right
     const rollDeg = Math.atan2(vZ.x, vZ.z) * RAD2DEG;
 
-    // World-vertical twist from calibrated facing direction
     const qWorld = quatMultiply(qDev, qZeroInv);
     const vXWorld = rotateVec(qWorld, 1, 0, 0);
     const twistDeg = Math.atan2(vXWorld.y, vXWorld.x) * RAD2DEG;
@@ -642,7 +649,6 @@
     return { pitchDeg, rollDeg, twistDeg };
   }
 
-  // Soft deadzone with smooth ramp so milk doesn't jerk at threshold
   function applyDeadzone(deg, dz, maxDeg) {
     const abs = Math.abs(deg);
     if (abs <= dz) return 0;
@@ -650,7 +656,6 @@
     return sign * clamp((abs - dz) / Math.max(1, maxDeg - dz), 0, 1);
   }
 
-  // ---------- Domain & Target Initialization ----------
   function initGrid() {
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
@@ -714,7 +719,6 @@
     thumbSlideY = 0;
   }
 
-  // ---------- Sound Engine ----------
   function initSound() {
     if (audioCtx) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -750,13 +754,11 @@
       pourGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
       return;
     }
-    // High pour sounds brighter & splashier; low pour sounds deeper & creamier
     const freq = 340 + cupFill * 420 + height * 280 + flow * 140;
     pourFilter.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.05);
     pourGain.gain.setTargetAtTime(flow * 0.11, audioCtx.currentTime, 0.04);
   }
 
-  // ---------- 2D Incompressible Navier-Stokes + Stratified Foam Solver ----------
   function sampleBilinear(field, x, y) {
     const cx = clamp(x, 1, N - 2.001);
     const cy = clamp(y, 1, N - 2.001);
@@ -777,16 +779,12 @@
   function stepPhysics(flowRate, spoutHeight) {
     sourceField.fill(0);
 
-    // 1. Apply Pour Jet Momentum, Penetration & Surface-Tension Stratification
     if (flowRate > 0.02 && !spilled) {
       const gx = CX + pourX * (R * 0.72);
       const gy = CY + pourY * (R * 0.72);
       const moveVX = (pourX - prevPourX) * 42;
       const moveVY = (pourY - prevPourY) * 42;
 
-      // Height physics:
-      // High spout (spoutHeight > 0.5) -> high vertical momentum, plunges under crema -> mixes baseMix
-      // Low spout (spoutHeight <= 0.5) -> stagnation-point radial wall jet -> deposits floating foam
       const isFloating = spoutHeight < 0.55;
       const floatRatio = clamp((0.55 - spoutHeight) / 0.55, 0, 1);
       const submergeRatio = 1 - floatRatio;
@@ -794,7 +792,6 @@
       const jetRadius = 3.2 + flowRate * 4.4 + floatRatio * 1.4;
       const rSq = jetRadius * jetRadius;
 
-      // Lateral surface spreading force vs vertical plunge
       const radialStrength = flowRate * (0.35 + floatRatio * 1.35);
       const sourceStrength = flowRate * (0.14 + floatRatio * 0.48);
 
@@ -812,21 +809,19 @@
           const dSq = dx * dx + dy * dy;
           if (dSq > rSq) continue;
 
-          const dist = Math.sqrt(dSq) + 0.001;
-          const falloff = Math.pow(1 - dist / jetRadius, 1.4);
+          const rawDist = Math.sqrt(dSq);
+          const dist = rawDist + 0.001;
+          const t = Math.max(0, 1 - rawDist / jetRadius);
+          const falloff = Math.pow(t, 1.4);
 
-          // Subsurface espresso-milk mixing (sets golden canvas)
           baseMix[idx] = clamp(baseMix[idx] + submergeRatio * flowRate * falloff * 0.16, 0, 1);
 
-          // Buoyant surface microfoam deposit when spout is low
           if (isFloating) {
             foam[idx] = clamp(foam[idx] + floatRatio * flowRate * falloff * 0.42, 0, 1);
           } else {
-            // High thin jet gently parts thin foam along its cut line
             foam[idx] = clamp(foam[idx] - submergeRatio * flowRate * falloff * 0.04, 0, 1);
           }
 
-          // Inject radial wall-jet velocity + pitcher sweep drag + incompressible source
           u[idx] += (dx / dist) * radialStrength * falloff + moveVX * falloff * 0.32;
           v[idx] += (dy / dist) * radialStrength * falloff + moveVY * falloff * 0.32;
           sourceField[idx] += sourceStrength * falloff;
@@ -840,7 +835,6 @@
       }
     }
 
-    // 2. Vorticity Confinement (curls rosetta petals & heart lobes organically)
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
@@ -868,7 +862,6 @@
       }
     }
 
-    // 3. Velocity Self-Advection + Bingham Shear-Thinning Microfoam Drag
     const dt = 0.72;
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
@@ -883,17 +876,15 @@
         const au = sampleBilinear(u, sx, sy);
         const av = sampleBilinear(v, sx, sy);
 
-        // Non-Newtonian drag: fast fluid glides; slow foam locks its pattern cleanly
         const speed = Math.hypot(au, av);
         const drag = speed > 0.18 ? 0.935 : 0.84;
-        uNext[idx] = au * drag;
-        vNext[idx] = av * drag;
+        uNext[idx] = clamp(au * drag, -10, 10);
+        vNext[idx] = clamp(av * drag, -10, 10);
       }
     }
     let tmp = u; u = uNext; uNext = tmp;
     tmp = v; v = vNext; vNext = tmp;
 
-    // 4. Incompressible Pressure Projection (with cup wall boundary + jet source)
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
@@ -903,12 +894,11 @@
           continue;
         }
         div[idx] = -0.5 * ((u[idx + 1] - u[idx - 1]) + (v[idx + N] - v[idx - N])) + sourceField[idx];
-        p[idx] = 0;
+        p[idx] *= 0.5;
       }
     }
 
-    // 14 Jacobi iterations for smooth global displacement across the cup
-    for (let iter = 0; iter < 14; iter++) {
+    for (let iter = 0; iter < 18; iter++) {
       for (let y = 1; y < N - 1; y++) {
         for (let x = 1; x < N - 1; x++) {
           const idx = y * N + x;
@@ -923,7 +913,6 @@
       }
     }
 
-    // Subtract pressure gradient & enforce circular cup wall slip
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
@@ -941,7 +930,6 @@
         u[idx] -= 0.5 * (pR - pL);
         v[idx] -= 0.5 * (pD - pU);
 
-        // Near cup rim, deflect outward velocity along the rim curve
         const dx = x - CX;
         const dy = y - CY;
         const dist = Math.hypot(dx, dy);
@@ -957,8 +945,6 @@
       }
     }
 
-    // 5. Clamped MacCormack Advection for razor-sharp wet-paint microfoam
-    // Forward pass
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
@@ -974,7 +960,6 @@
       }
     }
 
-    // Backward pass + min/max limiter
     for (let y = 1; y < N - 1; y++) {
       for (let x = 1; x < N - 1; x++) {
         const idx = y * N + x;
@@ -988,9 +973,8 @@
         const fxBack = x + u[idx] * dt;
         const fyBack = y + v[idx] * dt;
         const backVal = sampleBilinear(foamHat, fxBack, fyBack);
-        let corrected = foamHat[idx] + 0.5 * (foam[idx] - backVal);
+        const corrected = foamHat[idx] + 0.5 * (foam[idx] - backVal);
 
-        // Clamp to source neighborhood to eliminate ringing
         const x0 = Math.floor(sx);
         const y0 = Math.floor(sy);
         const i00 = y0 * N + x0;
@@ -1004,7 +988,6 @@
     tmp = baseMix; baseMix = baseMixNext; baseMixNext = tmp;
   }
 
-  // ---------- Render Cup, Stratified Glossy Foam & Pitcher ----------
   function render(flowRate, spoutHeight) {
     ctx.clearRect(0, 0, W, H);
 
@@ -1013,7 +996,6 @@
     const outerRadius = W * 0.39;
     const innerRadius = W * 0.34;
 
-    // Saucer
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY + 6, W * 0.46, 0, Math.PI * 2);
@@ -1037,7 +1019,6 @@
       ctx.restore();
     }
 
-    // Cup Handle
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(cupCenterX + outerRadius + 16, cupCenterY, 26, 15, 0, 0, Math.PI * 2);
@@ -1046,7 +1027,6 @@
     ctx.stroke();
     ctx.restore();
 
-    // Ceramic Rim
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY, outerRadius, 0, Math.PI * 2);
@@ -1057,38 +1037,38 @@
     ctx.fill();
     ctx.restore();
 
-    // Shade Fluid Grid with Glossy Microfoam Specular Normals
     const data = simImg.data;
-    for (let y = 1; y < N - 1; y++) {
-      for (let x = 1; x < N - 1; x++) {
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
         const idx = y * N + x;
         const pIdx = idx * 4;
-        if (!insideMask[idx]) {
+        const dx = x - CX;
+        const dy = y - CY;
+        const dSq = dx * dx + dy * dy;
+
+        if (dSq > (R + 3) * (R + 3)) {
           data[pIdx + 3] = 0;
           continue;
         }
 
-        const dx = x - CX;
-        const dy = y - CY;
-        const edgeShade = Math.max(0, 1 - (dx * dx + dy * dy) / (R * R) * 0.24);
-
-        // Subsurface espresso -> warm golden canvas color
+        const edgeShade = Math.max(0.74, 1 - Math.min(1, dSq / (R * R)) * 0.24);
         const bm = clamp(baseMix[idx] * 0.75 + cupFill * 0.25, 0, 1);
         const cR = (122 + bm * 68 + cremaNoise[idx] * 95) * edgeShade;
         const cG = (64  + bm * 58 + cremaNoise[idx] * 60) * edgeShade;
         const cB = (28  + bm * 38 + cremaNoise[idx] * 35) * edgeShade;
 
-        // Microfoam surface slope for subtle wet-paint gloss
-        const gx = foam[idx + 1] - foam[idx - 1];
-        const gy = foam[idx + N] - foam[idx - N];
-        const gloss = clamp((-gx - gy) * 18, -8, 12);
+        let gloss = 0;
+        if (x > 0 && x < N - 1 && y > 0 && y < N - 1) {
+          const gx = foam[idx + 1] - foam[idx - 1];
+          const gy = foam[idx + N] - foam[idx - N];
+          gloss = clamp((-gx - gy) * 18, -8, 12);
+        }
 
         const mR = clamp(248 + gloss, 0, 255);
         const mG = clamp(241 + gloss, 0, 255);
         const mB = clamp(231 + gloss, 0, 255);
 
-        // Crisp boundary contrast curve for stratified microfoam
-        const f = foam[idx];
+        const f = clamp(foam[idx], 0, 1);
         const mix = clamp(Math.pow(f, 0.78), 0, 1);
 
         data[pIdx]     = cR * (1 - mix) + mR * mix;
@@ -1099,17 +1079,18 @@
     }
     simCtx.putImageData(simImg, 0, 0);
 
-    // Draw espresso surface inside cup
     ctx.save();
     ctx.beginPath();
     ctx.arc(cupCenterX, cupCenterY, innerRadius, 0, Math.PI * 2);
     ctx.clip();
+    ctx.fillStyle = '#5c3015';
+    ctx.fill();
+
     const drawScale = (innerRadius * 2) / (R * 2);
     const drawSize = N * drawScale;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(simCanvas, cupCenterX - drawSize / 2, cupCenterY - drawSize / 2, drawSize, drawSize);
 
-    // Optional Ghost Pattern Guide
     if (showGuide && currentPattern !== 'free') {
       ctx.globalAlpha = 0.16;
       ctx.strokeStyle = '#ffffff';
@@ -1137,7 +1118,6 @@
     }
     ctx.restore();
 
-    // Target aim reticle
     const targetX = cupCenterX + pourX * (innerRadius * 0.72);
     const targetY = cupCenterY + pourY * (innerRadius * 0.72);
 
@@ -1151,16 +1131,15 @@
     ctx.stroke();
     ctx.restore();
 
-    // Milk stream + Tilted Pitcher
-    const spoutX = targetX + 34 + smoothRoll * 14;
-    const spoutY = targetY - 56 - spoutHeight * 54;
+    // Top-down / tilted pitcher positioned behind aim point (top of phone = spout)
+    const spoutX = targetX + smoothRoll * 14;
+    const spoutY = targetY - 46 - spoutHeight * 44;
 
     if (flowRate > 0.02 && !spilled) {
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(spoutX, spoutY);
-      ctx.quadraticCurveTo(spoutX - 7, (spoutY + targetY) / 2, targetX, targetY);
-      // High stream is thinner due to gravity stretching; low stream is thicker
+      ctx.quadraticCurveTo(spoutX, (spoutY + targetY) / 2, targetX, targetY);
       ctx.lineWidth = (2.2 + flowRate * 6.8) * (1.15 - spoutHeight * 0.45);
       ctx.lineCap = 'round';
       ctx.strokeStyle = 'rgba(252, 247, 240, 0.93)';
@@ -1168,19 +1147,22 @@
       ctx.restore();
     }
 
+    // Pitcher silhouette pointing forward toward cup (reflects tilt & roll)
     ctx.save();
     ctx.translate(spoutX, spoutY);
-    ctx.rotate(-0.32 - smoothPitch * 0.58 + smoothRoll * 0.14);
+    ctx.rotate(smoothRoll * 0.28);
+    ctx.scale(1, 1 - smoothPitch * 0.25);
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(44, -18);
-    ctx.lineTo(54, 28);
-    ctx.lineTo(10, 32);
+    ctx.moveTo(0, 6);        // Spout tip pointing down toward aim reticle
+    ctx.lineTo(-22, -26);
+    ctx.lineTo(-16, -42);
+    ctx.lineTo(16, -42);
+    ctx.lineTo(22, -26);
     ctx.closePath();
-    const steelGrad = ctx.createLinearGradient(0, -18, 54, 32);
-    steelGrad.addColorStop(0, '#e3e3e3');
+    const steelGrad = ctx.createLinearGradient(-22, -42, 22, 6);
+    steelGrad.addColorStop(0, '#ececec');
     steelGrad.addColorStop(0.5, '#9d9d9d');
-    steelGrad.addColorStop(1, '#636363');
+    steelGrad.addColorStop(1, '#5e5e5e');
     ctx.fillStyle = steelGrad;
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
@@ -1189,14 +1171,12 @@
     ctx.restore();
   }
 
-  // Render mini Quaternion Calibration Horizon
   function renderHorizon(pitchDeg, rollDeg) {
     const hw = hCanvas.width;
     const hh = hCanvas.height;
     const hc = hw / 2;
     hCtx.clearRect(0, 0, hw, hh);
 
-    // Deadzone circle
     const dzRadius = (deadzoneDeg / pitchMaxDeg) * (hc * 0.78);
     hCtx.beginPath();
     hCtx.arc(hc, hc, Math.max(4, dzRadius), 0, Math.PI * 2);
@@ -1204,7 +1184,6 @@
     hCtx.lineWidth = 2;
     hCtx.stroke();
 
-    // Crosshairs
     hCtx.beginPath();
     hCtx.moveTo(hc, 10); hCtx.lineTo(hc, hh - 10);
     hCtx.moveTo(10, hc); hCtx.lineTo(hw - 10, hc);
@@ -1212,7 +1191,6 @@
     hCtx.lineWidth = 1.5;
     hCtx.stroke();
 
-    // Live attitude dot
     const dx = clamp(rollDeg / rollMaxDeg, -1, 1) * (hc * 0.72);
     const dy = clamp(pitchDeg / pitchMaxDeg, -1, 1) * (hc * 0.72);
     hCtx.beginPath();
@@ -1221,7 +1199,6 @@
     hCtx.fill();
   }
 
-  // ---------- Main Simulation Loop ----------
   function loop() {
     prevPourX = pourX;
     prevPourY = pourY;
@@ -1236,7 +1213,10 @@
       dispRollDeg = rollDeg;
       dispTwistDeg = twistDeg;
 
-      const targetPitch = clamp(applyDeadzone(pitchDeg, deadzoneDeg, pitchMaxDeg), 0, 1);
+      // Positive pitchDeg = top edge tipped downward toward cup (pouring)
+      const targetPitch = pitchDeg > 0
+        ? clamp(applyDeadzone(pitchDeg, deadzoneDeg, pitchMaxDeg), 0, 1)
+        : 0;
       const targetRoll = applyDeadzone(rollDeg, 1.5, rollMaxDeg);
 
       let targetYaw = 0;
@@ -1245,7 +1225,6 @@
       } else if (yAxisMode === 'thumb') {
         targetYaw = thumbSlideY;
       } else {
-        // Auto-Sweep + Cut: starts slightly back when pouring, slides forward as pitch eases back
         targetYaw = targetPitch > 0.4 ? -0.18 : 0.42;
       }
 
@@ -1253,7 +1232,6 @@
       smoothRoll += (targetRoll - smoothRoll) * 0.26;
       smoothYaw += (targetYaw - smoothYaw) * 0.20;
     } else {
-      // Desktop / Mouse Fallback
       const targetPitch = pointerDown ? clamp((1 - pointerNY) * 0.65 + 0.35, 0, 1) : 0;
       const targetRoll = pointerDown ? clamp(pointerNX, -1, 1) : smoothRoll * 0.9;
       const targetYaw = pointerDown ? clamp(pointerNY, -1, 1) : smoothYaw * 0.9;
@@ -1270,9 +1248,6 @@
 
     const flowRate = smoothPitch > 0.03 ? smoothPitch : 0;
 
-    // Height calculation:
-    // Tilt-Coupled: gentle tilt (0..0.42) keeps spout high to sink/cut; deeper tilt drops spout low
-    // Pro-Hold: holding the Drop Spout button lowers the pitcher to 0.15; releasing keeps it high at 0.85
     let spoutHeight = 0.85;
     if (heightMode === 'prohold') {
       spoutHeight = (proDropHeld || (pointerDown && !shiftHeld && !useGyro)) ? 0.15 : 0.85;
@@ -1287,7 +1262,6 @@
     renderHorizon(dispPitchDeg, dispRollDeg);
     updateSound(flowRate, spoutHeight);
 
-    // Update HUD
     fillText.textContent = spilled ? 'SPILLED!' : `${Math.round(cupFill * 100)}%`;
     fillBar.style.width = `${Math.round(cupFill * 100)}%`;
     fillBar.style.background = spilled ? 'var(--bad)' : cupFill > 0.8 ? 'var(--good)' : 'var(--accent)';
@@ -1306,13 +1280,12 @@
     requestAnimationFrame(loop);
   }
 
-  // ---------- Scoring ----------
   function scoreCup() {
     if (cupFill < 0.25) {
       return {
         score: 15,
         title: 'Needs More Milk!',
-        tip: 'Tilt forward longer to fill the cup to 75–95%.'
+        tip: 'Tip the top edge forward longer to fill the cup to 75–95%.'
       };
     }
 
@@ -1330,7 +1303,7 @@
       return {
         score: balanceScore,
         title: spilled ? 'Overfilled!' : 'Velvety Free Pour!',
-        tip: spilled ? 'Tilt upright before hitting 100%.' : 'Great stratification! Try Heart, Tulip, or Rosetta.'
+        tip: spilled ? 'Level the phone flat before hitting 100%.' : 'Great stratification! Try Heart, Tulip, or Rosetta.'
       };
     }
 
@@ -1354,9 +1327,9 @@
     const rawScore = Math.round(clamp((coverage - penalty) * 95 + bonus, 10, 99));
 
     let tip = 'Beautiful stratification and fluid symmetry!';
-    if (spilled) tip = 'Overfilled! Ease upright around 90% full.';
-    else if (coverage < 0.35) tip = 'Drop the spout lower (deeper tilt or Pro Hold) so microfoam floats on top.';
-    else if (penalty > 0.25) tip = 'Start near the center and use a brief high-spout pull-through to cut.';
+    if (spilled) tip = 'Overfilled! Bring the phone back flat around 90% full.';
+    else if (coverage < 0.35) tip = 'Tip deeper forward (or hold Pro Drop) so microfoam floats on top.';
+    else if (penalty > 0.25) tip = 'Start near the center and lift slightly while pulling through to cut.';
 
     return {
       score: rawScore,
@@ -1365,8 +1338,8 @@
     };
   }
 
-  // ---------- Gyroscope & Calibration Listeners ----------
   function calibrateZero() {
+    alphaZero = rawAlpha;
     qZero = { ...qDev };
     calibrated = true;
     thumbSlideY = 0;
@@ -1374,11 +1347,14 @@
 
   function onOrientation(e) {
     if (e.beta === null || e.gamma === null) return;
-    qDev = eulerToQuat(e.alpha || 0, e.beta, e.gamma);
+    rawAlpha = e.alpha || 0;
+    qDev = eulerToQuat(rawAlpha, e.beta, e.gamma);
     if (!hasGyroEvent) {
       hasGyroEvent = true;
       calibrateZero();
-      modeBadge.textContent = 'Quaternion Gyro Active';
+      modeBadge.textContent = zeroRefMode === 'table'
+        ? 'Table-Flat Pitcher Active'
+        : 'Custom Grip Gyro Active';
     }
   }
 
@@ -1400,7 +1376,7 @@
     if ('DeviceOrientationEvent' in window) {
       useGyro = true;
       window.addEventListener('deviceorientation', onOrientation);
-      modeBadge.textContent = 'Calibrating quaternion...';
+      modeBadge.textContent = 'Calibrating pitcher...';
       startModal.classList.add('hidden');
       setTimeout(() => {
         if (!hasGyroEvent) {
@@ -1421,7 +1397,6 @@
     startModal.classList.add('hidden');
   }
 
-  // Pointer & Touch handlers
   function updatePointer(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1439,10 +1414,9 @@
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftHeld = true; });
   window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftHeld = false; });
 
-  // UI Listeners
   document.getElementById('enableGyroBtn').addEventListener('click', enableGyro);
   document.getElementById('desktopModeBtn').addEventListener('click', activateFallback);
-  document.getElementById('calibrateBtn').addEventListener('click', calibrateZero);
+  calibrateBtn.addEventListener('click', calibrateZero);
   document.getElementById('resetBtn').addEventListener('click', resetCup);
 
   document.getElementById('serveBtn').addEventListener('click', () => {
@@ -1476,7 +1450,17 @@
     soundBtn.classList.toggle('active', soundEnabled);
   });
 
-  // Calibration sliders & selectors
+  document.getElementById('zeroRefMode').addEventListener('change', (e) => {
+    zeroRefMode = e.target.value;
+    calibrateZero();
+    calibrateBtn.textContent = zeroRefMode === 'table' ? '🎯 Center Yaw' : '🎯 Zero Tilt';
+    if (hasGyroEvent) {
+      modeBadge.textContent = zeroRefMode === 'table'
+        ? 'Table-Flat Pitcher Active'
+        : 'Custom Grip Gyro Active';
+    }
+  });
+
   document.getElementById('yAxisMode').addEventListener('change', (e) => {
     yAxisMode = e.target.value;
     thumbSlideY = 0;
@@ -1526,7 +1510,6 @@
     });
   });
 
-  // ---------- Boot ----------
   initGrid();
   buildTargetMask(currentPattern);
   resetCup();
